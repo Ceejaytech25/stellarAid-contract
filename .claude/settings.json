@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(git -C /home/feyishola/Desktop/mydev/opensource/stellarAid-contract status)",
+      "Bash(xargs cat)"
+    ]
+  }
+}
