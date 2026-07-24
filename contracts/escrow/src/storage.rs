@@ -1,5 +1,4 @@
 use soroban_sdk::{contracttype, Address, Bytes, Env};
-use crate::errors::EscrowError;
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
