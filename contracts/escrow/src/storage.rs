@@ -37,4 +37,18 @@ pub fn get_escrow(env: &Env, commission_id: &Bytes) -> EscrowRecord {
 
 pub fn save_escrow(env: &Env, record: &EscrowRecord) {
     env.storage().persistent().set(&DataKey::Escrow(record.commission_id.clone()), record);
+    Config,
+}
+
+pub fn get_escrow(env: &Env, commission_id: &Bytes) -> EscrowRecord {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Escrow(commission_id.clone()))
+        .unwrap_or_else(|| panic_with_error!(env, EscrowError::NotFound))
+}
+
+pub fn save_escrow(env: &Env, record: &EscrowRecord) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::Escrow(record.commission_id.clone()), record);
 }
