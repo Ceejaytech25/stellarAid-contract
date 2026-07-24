@@ -45,7 +45,22 @@ impl EscrowContract {
         Ok(())
     }
 
-    pub fn refund_client(_env: Env, _commission_id: Bytes, _config_contract: Address) { todo!() }
+    pub fn refund_client(env: Env, commission_id: Bytes, config_contract: Address) -> Result<(), EscrowError> {
+        let mut record = get_escrow(&env, &commission_id);
+        if record.status != CommissionStatus::Locked && record.status != CommissionStatus::Disputed {
+            return Err(EscrowError::InvalidStatus);
+        }
+        let admin: Address = env.invoke_contract(&config_contract, &symbol_short!("get_adm"), soroban_sdk::vec![&env]);
+        admin.require_auth();
+        let usdc_token: Address = env.invoke_contract(&config_contract, &symbol_short!("get_usdc"), soroban_sdk::vec![&env]);
+        let token_client = token::Client::new(&env, &usdc_token);
+        token_client.transfer(&env.current_contract_address(), &record.client, &record.amount);
+        record.status = CommissionStatus::Refunded;
+        save_escrow(&env, &record);
+        env.events().publish((symbol_short!("refunded"),), (commission_id, record.client, record.amount));
+        Ok(())
+    }
+
     pub fn expire_escrow(_env: Env, _commission_id: Bytes, _expiry_ledger: u32) { todo!() }
     pub fn get_escrow(env: Env, commission_id: Bytes) -> EscrowRecord { storage::get_escrow(&env, &commission_id) }
     pub fn open_dispute(_env: Env, _commission_id: Bytes, _initiator: Address) { todo!() }
