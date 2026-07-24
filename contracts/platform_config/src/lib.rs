@@ -81,3 +81,6 @@ impl PlatformConfigContract {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;
