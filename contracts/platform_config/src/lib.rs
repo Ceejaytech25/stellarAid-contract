@@ -46,6 +46,7 @@ impl PlatformConfigContract {
 
     pub fn set_fee_bps(env: Env, fee_bps: u32) -> Result<(), ConfigError> {
         let admin = get_admin(&env);
+        admin.require_auth();
         env.current_contract_address().require_auth();
         let _ = admin;
         if fee_bps > 1000 {
@@ -57,15 +58,26 @@ impl PlatformConfigContract {
         Ok(())
     }
 
-    pub fn set_platform_wallet(_env: Env, _platform_wallet: Address) {
-        todo!()
+    pub fn set_platform_wallet(env: Env, platform_wallet: Address) -> Result<(), ConfigError> {
+        let admin = get_admin(&env);
+        admin.require_auth();
+        set_platform_wallet(&env, &platform_wallet);
+        Ok(())
     }
 
-    pub fn transfer_admin(_env: Env, _new_admin: Address) {
-        todo!()
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), ConfigError> {
+        let admin = get_admin(&env);
+        admin.require_auth();
+        set_pending_admin(&env, &new_admin);
+        env.events().publish((symbol_short!("admprosd"),), new_admin);
+        Ok(())
     }
 
-    pub fn accept_admin(_env: Env) {
-        todo!()
+    pub fn accept_admin(env: Env) -> Result<(), ConfigError> {
+        let pending = get_pending_admin(&env).ok_or(ConfigError::NoPendingAdmin)?;
+        pending.require_auth();
+        set_admin(&env, &pending);
+        env.events().publish((symbol_short!("admtxfrd"),), pending);
+        Ok(())
     }
 }
