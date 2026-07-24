@@ -31,7 +31,7 @@ impl PlatformConfigContract {
         set_fee_bps_val(&env, fee_bps);
         set_platform_wallet(&env, &platform_wallet);
         set_usdc_token(&env, &usdc_token);
-        env.events().publish((symbol_short!("init"),), (admin, fee_bps));
+        env.events().publish((symbol_short!("init"),), (admin.clone(), fee_bps));
         Ok(())
     }
 
@@ -44,8 +44,17 @@ impl PlatformConfigContract {
         }
     }
 
-    pub fn set_fee_bps(_env: Env, _fee_bps: u32) {
-        todo!()
+    pub fn set_fee_bps(env: Env, fee_bps: u32) -> Result<(), ConfigError> {
+        let admin = get_admin(&env);
+        env.current_contract_address().require_auth();
+        let _ = admin;
+        if fee_bps > 1000 {
+            return Err(ConfigError::InvalidFeeBps);
+        }
+        let old_fee = get_fee_bps(&env);
+        set_fee_bps_val(&env, fee_bps);
+        env.events().publish((symbol_short!("feeupdtd"),), (old_fee, fee_bps));
+        Ok(())
     }
 
     pub fn set_platform_wallet(_env: Env, _platform_wallet: Address) {
