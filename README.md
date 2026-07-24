@@ -30,3 +30,18 @@ make test
 ```
 
 See [docs/DEPLOY.md](docs/DEPLOY.md) for deployment instructions.
+
+## Prerequisites
+
+- Rust toolchain (stable): https://rustup.rs
+- wasm32 target: `rustup target add wasm32-unknown-unknown`
+- Soroban CLI: `cargo install --locked soroban-cli --features opt`
+- Verify: `soroban --version`
+
+### Configure Stellar Testnet
+
+```bash
+soroban network add --global testnet \
+  --rpc-url https://soroban-testnet.stellar.org \
+  --network-passphrase "Test SDF Network ; September 2015"
+```

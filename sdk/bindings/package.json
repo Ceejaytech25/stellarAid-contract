@@ -1,0 +1,33 @@
+{
+  "name": "@stellaraid/wallet-adapters",
+  "version": "0.1.0",
+  "description": "Unified wallet adapter interface for Freighter, Albedo, and Lobstr",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@lobstrco/signer-extension-api": "^0.1.0",
+    "@stellar/freighter-api": "^1.7.1",
+    "albedo-link": "^0.2.3"
+  },
+  "peerDependenciesMeta": {
+    "@stellar/freighter-api": {
+      "optional": true
+    },
+    "albedo-link": {
+      "optional": true
+    },
+    "@lobstrco/signer-extension-api": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "files": [
+    "dist"
+  ]
+}
