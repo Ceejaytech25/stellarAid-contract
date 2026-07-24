@@ -74,7 +74,16 @@ impl EscrowContract {
         Ok(storage::get_escrow(&env, &commission_id))
     }
 
-    pub fn open_dispute(_env: Env, _commission_id: Bytes, _initiator: Address) { todo!() }
+    pub fn open_dispute(env: Env, commission_id: Bytes, initiator: Address) -> Result<(), EscrowError> {
+        initiator.require_auth();
+        let mut record = get_escrow(&env, &commission_id);
+        if record.status == CommissionStatus::Disputed { return Err(EscrowError::DisputeAlreadyOpen); }
+        if record.status != CommissionStatus::Locked { return Err(EscrowError::InvalidStatus); }
+        if initiator != record.client && initiator != record.artist { return Err(EscrowError::Unauthorized); }
+        record.status = CommissionStatus::Disputed;
+        save_escrow(&env, &record);
+        env.events().publish((symbol_short!("disputed"),), (commission_id, initiator));
+        Ok(())
     pub fn create_escrow(
         env: Env,
         commission_id: Bytes,
