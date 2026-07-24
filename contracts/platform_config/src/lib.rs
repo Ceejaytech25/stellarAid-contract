@@ -3,9 +3,11 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env};
 
 pub mod errors;
 pub mod storage;
+pub mod types;
 
 use errors::ConfigError;
 use storage::*;
+use types::PlatformConfig;
 
 #[contract]
 pub struct PlatformConfigContract;
@@ -33,8 +35,13 @@ impl PlatformConfigContract {
         Ok(())
     }
 
-    pub fn get_config(_env: Env) {
-        todo!()
+    pub fn get_config(env: Env) -> PlatformConfig {
+        PlatformConfig {
+            admin: get_admin(&env),
+            fee_bps: get_fee_bps(&env),
+            platform_wallet: get_platform_wallet(&env),
+            usdc_token: get_usdc_token(&env),
+        }
     }
 
     pub fn set_fee_bps(_env: Env, _fee_bps: u32) {
