@@ -1,5 +1,5 @@
 [package]
-name = "escrow"
+name = "platform_config"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { version = "21.0.0" }
+
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }
 soroban-sdk = { workspace = true }
-shared = { path = "../shared" }
