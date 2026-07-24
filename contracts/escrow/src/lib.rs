@@ -3,6 +3,8 @@ use soroban_sdk::{contract, contractimpl, Address, Bytes, Env};
 
 pub mod errors;
 pub mod storage;
+
+use storage::EscrowRecord;
 use soroban_sdk::{contract, contractimpl, Env};
 
 #[contract]

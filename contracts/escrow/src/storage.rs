@@ -1,7 +1,43 @@
-use soroban_sdk::{contracttype, Bytes, Env};
+use soroban_sdk::{contracttype, Address, Bytes, Env};
+use crate::errors::EscrowError;
+
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommissionStatus {
+    Locked = 0,
+    Released = 1,
+    Refunded = 2,
+    Disputed = 3,
+    Expired = 4,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct EscrowRecord {
+    pub commission_id: Bytes,
+    pub client: Address,
+    pub artist: Address,
+    pub amount: i128,
+    pub fee_bps: u32,
+    pub status: CommissionStatus,
+    pub created_ledger: u32,
+}
 
 #[contracttype]
 pub enum DataKey {
     Escrow(Bytes),
     Config,
+}
+
+pub fn get_escrow(env: &Env, commission_id: &Bytes) -> EscrowRecord {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Escrow(commission_id.clone()))
+        .unwrap_or_else(|| panic_with_error!(env, EscrowError::NotFound))
+}
+
+pub fn save_escrow(env: &Env, record: &EscrowRecord) {
+    env.storage()
+        .persistent()
+        .set(&DataKey::Escrow(record.commission_id.clone()), record);
 }
