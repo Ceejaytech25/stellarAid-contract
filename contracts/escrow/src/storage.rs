@@ -23,7 +23,11 @@ pub struct EscrowRecord {
 }
 
 #[contracttype]
-pub enum DataKey { Escrow(Bytes) }
+pub enum DataKey {
+    Escrow(Bytes),
+    /// Re-entrancy guard flag (#484).
+    ReentrancyLock,
+}
 
 pub fn escrow_exists(env: &Env, id: &Bytes) -> bool {
     env.storage().persistent().has(&DataKey::Escrow(id.clone()))
@@ -33,4 +37,21 @@ pub fn get_escrow(env: &Env, id: &Bytes) -> EscrowRecord {
 }
 pub fn save_escrow(env: &Env, r: &EscrowRecord) {
     env.storage().persistent().set(&DataKey::Escrow(r.commission_id.clone()), r);
+}
+
+// ── Re-entrancy lock helpers (#484) ────────────────────────────────────────
+
+/// Returns `true` if a re-entrancy lock is currently held.
+pub fn is_locked(env: &Env) -> bool {
+    env.storage().instance().has(&DataKey::ReentrancyLock)
+}
+
+/// Acquire the re-entrancy lock.
+pub fn set_locked(env: &Env) {
+    env.storage().instance().set(&DataKey::ReentrancyLock, &true);
+}
+
+/// Release the re-entrancy lock.
+pub fn clear_locked(env: &Env) {
+    env.storage().instance().remove(&DataKey::ReentrancyLock);
 }

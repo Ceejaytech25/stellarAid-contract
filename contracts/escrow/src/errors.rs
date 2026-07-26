@@ -11,6 +11,10 @@ pub enum EscrowError {
     InvalidFeeBps = 6,
     DisputeAlreadyOpen = 7,
     NotExpired = 8,
+    /// #484 – a re-entrant call was detected and rejected.
+    Reentrant = 9,
+    /// #485 – client and artist addresses must be distinct, or an address failed validation.
+    InvalidAddress = 10,
     /// Added for #481: client does not hold enough USDC to fund the escrow.
     InsufficientBalance = 9,
 }
