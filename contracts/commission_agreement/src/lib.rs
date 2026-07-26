@@ -193,3 +193,5 @@ impl CommissionAgreementContract {
             .unwrap_or(Vec::new(&env)))
     }
 }
+#[cfg(test)]
+mod integration_tests;
