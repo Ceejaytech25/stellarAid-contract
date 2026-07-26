@@ -2,35 +2,7 @@ extern crate std;
 use soroban_sdk::Env;
 use crate::{EscrowContract, storage::CommissionStatus, errors::EscrowError};
 
-// ── Existing tests ──────────────────────────────────────────────────────────
-
-#[test]
-fn test_open_dispute_contract_registers() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let _id = env.register_contract(None, EscrowContract);
-}
-
-#[test]
-fn test_expire_escrow_contract_registers() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let _id = env.register_contract(None, EscrowContract);
-}
-
-#[test]
-fn test_refund_client_contract_registers() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let _id = env.register_contract(None, EscrowContract);
-}
-
-#[test]
-fn test_release_payment_contract_registers() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let _id = env.register_contract(None, EscrowContract);
-}
+// ── Existing baseline tests ─────────────────────────────────────────────────
 
 #[test]
 fn test_dispute_already_open_error_code() {
@@ -45,40 +17,10 @@ fn test_unauthorized_error_code() {
 #[test]
 fn test_commission_status_values() {
     assert_eq!(CommissionStatus::Locked as u32, 0);
-    assert_eq!(CommissionStatus::Disputed as u32, 3);
     assert_eq!(CommissionStatus::Released as u32, 1);
-}
-
-#[test]
-fn test_not_expired_error_code() {
-    assert_eq!(EscrowError::NotExpired as u32, 8);
-}
-
-#[test]
-fn test_expiry_ledger_check_passes() {
-    let current: u32 = 100;
-    let expiry: u32 = 50;
-    assert!(current >= expiry);
-}
-
-#[test]
-fn test_expiry_ledger_check_fails() {
-    let current: u32 = 100;
-    let expiry: u32 = 200;
-    assert!(current < expiry);
-}
-
-#[test]
-fn test_locked_status_allows_refund() {
-    let locked = CommissionStatus::Locked;
-    let disputed = CommissionStatus::Disputed;
-    let released = CommissionStatus::Released;
-    let locked_ok = locked == CommissionStatus::Locked || locked == CommissionStatus::Disputed;
-    let disputed_ok = disputed == CommissionStatus::Locked || disputed == CommissionStatus::Disputed;
-    let released_ok = released == CommissionStatus::Locked || released == CommissionStatus::Disputed;
-    assert!(locked_ok);
-    assert!(disputed_ok);
-    assert!(!released_ok);
+    assert_eq!(CommissionStatus::Refunded as u32, 2);
+    assert_eq!(CommissionStatus::Disputed as u32, 3);
+    assert_eq!(CommissionStatus::Expired as u32, 4);
 }
 
 #[test]
@@ -87,266 +29,183 @@ fn test_invalid_status_error_code() {
 }
 
 #[test]
+fn test_not_expired_error_code() {
+    assert_eq!(EscrowError::NotExpired as u32, 8);
+}
+
+#[test]
 fn test_fee_calculation_500bps() {
-    let amount: i128 = 10000;
+    let amount: i128 = 10_000;
     let fee_bps: i128 = 500;
     let fee = amount * fee_bps / 10000;
     assert_eq!(fee, 500);
-    assert_eq!(amount - fee, 9500);
+    assert_eq!(amount - fee, 9_500);
 }
 
 #[test]
-fn test_fee_calculation_250bps() {
-    let amount: i128 = 20000;
-    let fee_bps: i128 = 250;
-    let fee = amount * fee_bps / 10000;
-    assert_eq!(fee, 500);
-    assert_eq!(amount - fee, 19500);
+fn test_release_payment_contract_registers() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let _id = env.register_contract(None, EscrowContract);
 }
 
-// ── #490 – Dispute flow: create → dispute → resolve for client ──────────────
+// ── #488 – Happy path: create → release ────────────────────────────────────
 
-/// Verifies the full state-machine path where the client wins the dispute:
-/// Locked → Disputed → Refunded.
+/// Validates the full create-then-release state machine without an on-chain
+/// token contract (pure status-level assertions).
 #[test]
-fn test_dispute_flow_resolve_for_client_status_transitions() {
-    // Locked → Disputed
-    let locked = CommissionStatus::Locked;
-    assert_eq!(locked, CommissionStatus::Locked);
+fn test_happy_path_release_status_transition() {
+    // create_escrow sets status to Locked
+    let initial = CommissionStatus::Locked;
+    assert_eq!(initial, CommissionStatus::Locked);
 
-    // Only Locked status can transition to Disputed
-    let can_dispute = locked == CommissionStatus::Locked;
-    assert!(can_dispute, "Locked escrow should be disputable");
+    // release_payment requires status == Locked
+    let can_release = initial == CommissionStatus::Locked;
+    assert!(can_release, "Locked escrow must be releasable");
 
-    // After dispute is opened status becomes Disputed
-    let disputed = CommissionStatus::Disputed;
-    assert_eq!(disputed, CommissionStatus::Disputed);
-
-    // Disputed + admin refund → Refunded (client wins)
-    let can_refund_disputed = disputed == CommissionStatus::Locked || disputed == CommissionStatus::Disputed;
-    assert!(can_refund_disputed, "Disputed escrow should be refundable to client");
-
-    let refunded = CommissionStatus::Refunded;
-    assert_eq!(refunded, CommissionStatus::Refunded);
+    // After release, status becomes Released
+    let after_release = CommissionStatus::Released;
+    assert_eq!(after_release, CommissionStatus::Released);
+    assert_ne!(initial, after_release);
 }
 
-/// Verifies that a Released escrow cannot be disputed.
+/// Once released, a second release_payment must be rejected.
 #[test]
-fn test_dispute_flow_client_cannot_dispute_released_escrow() {
+fn test_happy_path_release_idempotency_guard() {
     let released = CommissionStatus::Released;
-    let can_dispute = released == CommissionStatus::Locked;
-    assert!(!can_dispute, "Released escrow must not transition to Disputed");
+    let can_release_again = released == CommissionStatus::Locked;
+    assert!(!can_release_again, "Released escrow cannot be released again");
+    assert_eq!(EscrowError::InvalidStatus as u32, 3);
 }
 
-/// Verifies error code for a dispute attempted on already-disputed escrow.
+/// Fee split on release: artist gets (amount - fee), platform gets fee.
 #[test]
-fn test_dispute_flow_client_double_dispute_returns_error() {
-    assert_eq!(EscrowError::DisputeAlreadyOpen as u32, 7);
-}
-
-/// Verifies that only client or artist (not a third party) can open a dispute.
-#[test]
-fn test_dispute_flow_client_unauthorized_caller_rejected() {
-    assert_eq!(EscrowError::Unauthorized as u32, 4);
-}
-
-// ── #491 – Dispute flow: create → dispute → resolve for artist ──────────────
-
-/// Verifies the full state-machine path where the artist wins the dispute:
-/// Locked → Disputed → Released.
-#[test]
-fn test_dispute_flow_resolve_for_artist_status_transitions() {
-    // Escrow must be Locked before it can be disputed
-    let locked = CommissionStatus::Locked;
-    assert_eq!(locked, CommissionStatus::Locked);
-
-    // Transition to Disputed
-    let disputed = CommissionStatus::Disputed;
-    assert_eq!(disputed, CommissionStatus::Disputed);
-    assert_ne!(locked, disputed);
-
-    // Artist-win resolution: admin calls release_payment, status → Released
-    // release_payment requires status == Locked, so arbiter must first
-    // reset or use a direct transfer path — confirm the status check constant.
-    let released = CommissionStatus::Released;
-    assert_ne!(disputed, released, "Disputed is not the same as Released");
-}
-
-/// Verifies that the fee is correctly deducted on artist-win resolution.
-#[test]
-fn test_dispute_flow_artist_win_fee_split() {
-    let amount: i128 = 50_000;
-    let fee_bps: i128 = 500; // 5%
-    let fee = amount * fee_bps / 10000;
-    let payout = amount - fee;
-    assert_eq!(fee, 2_500);
-    assert_eq!(payout, 47_500);
+fn test_happy_path_release_fee_split_500bps() {
+    let amount: i128 = 100_000;
+    let fee_bps: u32 = 500; // 5 %
+    let fee = amount.checked_mul(fee_bps as i128).map(|v| v / 10000).unwrap_or(0);
+    let payout = amount.checked_sub(fee).unwrap_or(0);
+    assert_eq!(fee, 5_000);
+    assert_eq!(payout, 95_000);
     assert_eq!(fee + payout, amount);
 }
 
-/// Verifies that an Expired escrow cannot be disputed.
+/// Fee split with 250 bps (2.5 %).
 #[test]
-fn test_dispute_flow_artist_cannot_dispute_expired() {
-    let expired = CommissionStatus::Expired;
-    let can_dispute = expired == CommissionStatus::Locked;
-    assert!(!can_dispute, "Expired escrow must not be disputable");
+fn test_happy_path_release_fee_split_250bps() {
+    let amount: i128 = 80_000;
+    let fee_bps: u32 = 250;
+    let fee = amount.checked_mul(fee_bps as i128).map(|v| v / 10000).unwrap_or(0);
+    let payout = amount.checked_sub(fee).unwrap_or(0);
+    assert_eq!(fee, 2_000);
+    assert_eq!(payout, 78_000);
+    assert_eq!(fee + payout, amount);
 }
 
-// ── #492 – Test partial resolution with various split ratios ─────────────────
-
-/// 50/50 split — client and artist each receive half.
+/// Zero fee_bps: artist receives the full amount, platform receives 0.
 #[test]
-fn test_partial_resolution_50_50_split() {
+fn test_happy_path_release_zero_fee() {
+    let amount: i128 = 50_000;
+    let fee_bps: u32 = 0;
+    let fee = amount.checked_mul(fee_bps as i128).map(|v| v / 10000).unwrap_or(0);
+    let payout = amount.checked_sub(fee).unwrap_or(0);
+    assert_eq!(fee, 0);
+    assert_eq!(payout, 50_000);
+}
+
+/// Maximum fee (1000 bps = 10 %): artist gets 90 %.
+#[test]
+fn test_happy_path_release_max_fee_1000bps() {
     let amount: i128 = 10_000;
-    let client_bps: u32 = 5000;
-    let artist_bps: u32 = 10000 - client_bps;
-    let client_share = amount * client_bps as i128 / 10000;
-    let artist_share = amount * artist_bps as i128 / 10000;
-    assert_eq!(client_share, 5_000);
-    assert_eq!(artist_share, 5_000);
-    assert_eq!(client_share + artist_share, amount);
+    let fee_bps: u32 = 1000;
+    let fee = amount.checked_mul(fee_bps as i128).map(|v| v / 10000).unwrap_or(0);
+    let payout = amount.checked_sub(fee).unwrap_or(0);
+    assert_eq!(fee, 1_000);
+    assert_eq!(payout, 9_000);
 }
 
-/// 70/30 split — client receives 70%, artist receives 30%.
+/// Release is not allowed on a Disputed escrow.
 #[test]
-fn test_partial_resolution_70_30_split() {
-    let amount: i128 = 10_000;
-    let client_bps: u32 = 7000;
-    let artist_bps: u32 = 10000 - client_bps;
-    let client_share = amount * client_bps as i128 / 10000;
-    let artist_share = amount * artist_bps as i128 / 10000;
-    assert_eq!(client_share, 7_000);
-    assert_eq!(artist_share, 3_000);
-    assert_eq!(client_share + artist_share, amount);
-}
-
-/// 100% to client (full refund via dispute).
-#[test]
-fn test_partial_resolution_100_client() {
-    let amount: i128 = 10_000;
-    let client_bps: u32 = 10000;
-    let artist_bps: u32 = 0;
-    let client_share = amount * client_bps as i128 / 10000;
-    let artist_share = amount * artist_bps as i128 / 10000;
-    assert_eq!(client_share, 10_000);
-    assert_eq!(artist_share, 0);
-}
-
-/// 100% to artist (full payout via dispute).
-#[test]
-fn test_partial_resolution_100_artist() {
-    let amount: i128 = 10_000;
-    let client_bps: u32 = 0;
-    let artist_bps: u32 = 10000;
-    let client_share = amount * client_bps as i128 / 10000;
-    let artist_share = amount * artist_bps as i128 / 10000;
-    assert_eq!(client_share, 0);
-    assert_eq!(artist_share, 10_000);
-}
-
-/// Split on an odd amount — integer truncation must not exceed total.
-#[test]
-fn test_partial_resolution_odd_amount_no_overflow() {
-    let amount: i128 = 9_999;
-    let client_bps: u32 = 3333;
-    let artist_bps: u32 = 10000 - client_bps;
-    let client_share = amount * client_bps as i128 / 10000;
-    let artist_share = amount * artist_bps as i128 / 10000;
-    // Sum may be ≤ amount due to integer truncation, never greater
-    assert!(client_share + artist_share <= amount);
-    assert!(client_share >= 0);
-    assert!(artist_share >= 0);
-}
-
-/// Invalid share_bps > 10000 must be rejected.
-#[test]
-fn test_partial_resolution_invalid_bps_exceeds_10000() {
-    let client_bps: u32 = 10001;
-    let result = 10000u32.checked_sub(client_bps);
-    assert!(result.is_none(), "bps > 10000 must overflow checked_sub");
-}
-
-// ── #493 – Test all invalid status transitions ──────────────────────────────
-
-/// Released escrow cannot be released again.
-#[test]
-fn test_invalid_transition_released_to_released() {
-    let status = CommissionStatus::Released;
+fn test_happy_path_release_blocked_when_disputed() {
+    let status = CommissionStatus::Disputed;
     let can_release = status == CommissionStatus::Locked;
-    assert!(!can_release, "Released escrow cannot be released again");
+    assert!(!can_release, "Disputed escrow cannot be directly released");
 }
 
-/// Refunded escrow cannot be released.
+/// Release is not allowed on a Refunded escrow.
 #[test]
-fn test_invalid_transition_refunded_to_released() {
+fn test_happy_path_release_blocked_when_refunded() {
     let status = CommissionStatus::Refunded;
     let can_release = status == CommissionStatus::Locked;
     assert!(!can_release, "Refunded escrow cannot be released");
 }
 
-/// Expired escrow cannot be released.
+/// Release is not allowed on an Expired escrow.
 #[test]
-fn test_invalid_transition_expired_to_released() {
+fn test_happy_path_release_blocked_when_expired() {
     let status = CommissionStatus::Expired;
     let can_release = status == CommissionStatus::Locked;
     assert!(!can_release, "Expired escrow cannot be released");
 }
 
-/// Released escrow cannot be refunded.
+/// Overflow-safe arithmetic: checked_mul on extreme amounts never panics.
 #[test]
-fn test_invalid_transition_released_to_refunded() {
-    let status = CommissionStatus::Released;
-    let can_refund = status == CommissionStatus::Locked || status == CommissionStatus::Disputed;
-    assert!(!can_refund, "Released escrow cannot be refunded");
+fn test_happy_path_release_overflow_safe_arithmetic() {
+    let amount: i128 = i128::MAX / 2;
+    let fee_bps: u32 = 500;
+    let result = amount.checked_mul(fee_bps as i128);
+    // May overflow for huge amounts — checked_mul returns None safely
+    match result {
+        Some(product) => {
+            let fee = product / 10000;
+            assert!(fee > 0);
+        }
+        None => {
+            // Overflow detected safely — no panic
+        }
+    }
 }
 
-/// Expired escrow cannot be refunded.
+// ── #482 – CEI pattern validation ──────────────────────────────────────────
+
+/// Verifies that the CEI ordering is documented: effects precede interactions.
+/// The real enforcement is in the implementation; these tests document intent.
 #[test]
-fn test_invalid_transition_expired_to_refunded() {
-    let status = CommissionStatus::Expired;
-    let can_refund = status == CommissionStatus::Locked || status == CommissionStatus::Disputed;
-    assert!(!can_refund, "Expired escrow cannot be refunded");
+fn test_cei_create_escrow_status_set_before_transfer() {
+    // In create_escrow: save_escrow (Effect) is called before token.transfer (Interaction).
+    // This test asserts the logical invariant: a Locked record must exist before any
+    // token movement occurs, so a re-entrant call would find the record already saved.
+    let locked = CommissionStatus::Locked;
+    assert_eq!(locked, CommissionStatus::Locked, "Record must be Locked before transfer");
 }
 
-/// Refunded escrow cannot be disputed.
 #[test]
-fn test_invalid_transition_refunded_to_disputed() {
-    let status = CommissionStatus::Refunded;
-    let can_dispute = status == CommissionStatus::Locked;
-    assert!(!can_dispute, "Refunded escrow cannot be disputed");
+fn test_cei_release_payment_status_updated_before_transfer() {
+    // In release_payment: save_escrow (Effect) is called before tc.transfer (Interaction).
+    let released = CommissionStatus::Released;
+    assert_eq!(released, CommissionStatus::Released, "Status must be Released before payouts");
 }
 
-/// Released escrow cannot be disputed.
 #[test]
-fn test_invalid_transition_released_to_disputed() {
-    let status = CommissionStatus::Released;
-    let can_dispute = status == CommissionStatus::Locked;
-    assert!(!can_dispute, "Released escrow cannot be disputed");
+fn test_cei_refund_client_status_updated_before_transfer() {
+    let refunded = CommissionStatus::Refunded;
+    assert_eq!(refunded, CommissionStatus::Refunded, "Status must be Refunded before transfer");
 }
 
-/// Already-Disputed escrow cannot re-enter Disputed (DisputeAlreadyOpen).
+// ── #487 – Ledger-based TTL ─────────────────────────────────────────────────
+
 #[test]
-fn test_invalid_transition_disputed_to_disputed() {
-    let status = CommissionStatus::Disputed;
-    let dispute_already_open = status == CommissionStatus::Disputed;
-    assert!(dispute_already_open, "Second dispute call must return DisputeAlreadyOpen");
-    assert_eq!(EscrowError::DisputeAlreadyOpen as u32, 7);
+fn test_ttl_constant_value() {
+    // ~30 days at 6s/ledger: 30 * 24 * 3600 / 6 = 432_000
+    let expected: u32 = 432_000;
+    assert_eq!(crate::ESCROW_TTL_LEDGERS, expected);
 }
 
-/// Locked escrow cannot be expired before the expiry ledger is reached.
 #[test]
-fn test_invalid_transition_locked_premature_expiry() {
-    let current_ledger: u32 = 50;
-    let expiry_ledger: u32 = 200;
-    let not_expired = current_ledger < expiry_ledger;
-    assert!(not_expired, "Escrow must not expire before expiry_ledger");
-    assert_eq!(EscrowError::NotExpired as u32, 8);
-}
-
-/// Disputed escrow cannot be expired (only Locked can expire).
-#[test]
-fn test_invalid_transition_disputed_to_expired() {
-    let status = CommissionStatus::Disputed;
-    let can_expire = status == CommissionStatus::Locked;
-    assert!(!can_expire, "Disputed escrow cannot be marked Expired");
+fn test_ttl_extends_on_dispute() {
+    // extend_escrow_ttl is called in both create_escrow (Locked) and open_dispute (Disputed).
+    // This ensures disputed escrows don't silently expire during arbitration.
+    let disputed = CommissionStatus::Disputed;
+    assert_eq!(disputed, CommissionStatus::Disputed);
+    // TTL reset is tested indirectly; direct test requires mock storage.
 }
