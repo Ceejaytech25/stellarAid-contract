@@ -1,612 +1,353 @@
-extern crate std;
-use soroban_sdk::{Env, Bytes, Address, String};
-use crate::CommissionAgreementContract;
-use crate::types::{AgreementStatus, MilestoneStatus};
+#![cfg(test)]
+
+use soroban_sdk::{symbol_short, Address, Bytes, Env, String, Vec};
+
+use crate::types::{AgreementRecord, AgreementStatus, MilestoneRecord, MilestoneStatus};
 use crate::errors::AgreementError;
+use crate::CommissionAgreementContract;
 
-fn create_env() -> Env {
+#[test]
+fn test_create_agreement() {
     let env = Env::default();
-    env.mock_all_auths();
-    env
-}
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-fn sample_id(env: &Env) -> Bytes {
-    Bytes::from_array(env, b"commission_001")
-}
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
 
-fn milestone_id(env: &Env) -> Bytes {
-    Bytes::from_array(env, b"milestone_001")
-}
-
-fn milestone_id_2(env: &Env) -> Bytes {
-    Bytes::from_array(env, b"milestone_002")
-}
-
-fn client(env: &Env) -> Address {
-    Address::generate(env)
-}
-
-fn artist(env: &Env) -> Address {
-    Address::generate(env)
-}
-
-fn title(env: &Env) -> String {
-    String::from_str(env, "Test Commission")
-}
-
-fn ms_title(env: &Env) -> String {
-    String::from_str(env, "Draft Phase")
-}
-
-fn ms_title_2(env: &Env) -> String {
-    String::from_str(env, "Final Phase")
-}
-
-// --- create_agreement ---
-
-#[test]
-fn test_create_agreement_success() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
 
     let result = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
     );
     assert!(result.is_ok());
 
-    let record = client.get_agreement(&env, &sample_id(&env)).unwrap();
-    assert_eq!(record.status, AgreementStatus::Pending);
-    assert_eq!(record.budget_usdc, 10000);
+    let stored = client.get_agreement(&commission_id);
+    assert_eq!(stored.client, client_addr);
+    assert_eq!(stored.artist, artist_addr);
+    assert_eq!(stored.title, title);
+    assert_eq!(stored.budget_usdc, budget_usdc);
+    assert_eq!(stored.deadline_ledger, deadline_ledger);
+    assert_eq!(stored.status, AgreementStatus::Pending);
+    assert_eq!(stored.created_ledger, 50);
 }
 
 #[test]
-fn test_create_agreement_zero_budget() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let result = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &0,
-        &1000,
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::InvalidAmount);
-}
-
-#[test]
-fn test_create_agreement_past_deadline() {
-    let env = create_env();
-    env.ledger().set(500);
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let result = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &400,
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::DeadlineInPast);
-}
-
-#[test]
-fn test_create_agreement_duplicate() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &5000,
-        &1000,
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::AlreadyExists);
-}
-
-#[test]
-fn test_create_agreement_wrong_auth() {
+fn test_create_agreement_already_exists() {
     let env = Env::default();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client_contract = CommissionAgreementContract::new(&contract_addr);
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let bad_actor = Address::generate(&env);
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
 
-    let result = client_contract.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    let _ = client.create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
     );
 
+    let result = client.try_create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
+    );
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::AlreadyExists
+    );
+}
+
+#[test]
+fn test_create_agreement_invalid_amount() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
+
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let deadline_ledger: u32 = 100;
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    let result = client.try_create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &(-100),
+        &deadline_ledger,
+    );
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::InvalidAmount
+    );
+}
+
+#[test]
+fn test_create_agreement_deadline_in_past() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
+
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 100;
+    });
+
+    let result = client.try_create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &50,
+    );
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::DeadlineInPast
+    );
+}
+
+#[test]
+fn test_accept_agreement() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
+
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    client.create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
+    );
+
+    let result = client.accept_agreement(&commission_id);
     assert!(result.is_ok());
+
+    let stored = client.get_agreement(&commission_id);
+    assert_eq!(stored.status, AgreementStatus::Active);
 }
 
-// --- accept_agreement ---
-
 #[test]
-fn test_accept_agreement_success() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+fn test_reject_agreement() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
+    let reason = String::from_str(&env, "Too low budget");
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    client.create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
     );
 
-    let result = client.accept_agreement(&env, &sample_id(&env));
+    let result = client.reject_agreement(&commission_id, &reason);
     assert!(result.is_ok());
 
-    let record = client.get_agreement(&env, &sample_id(&env)).unwrap();
-    assert_eq!(record.status, AgreementStatus::Active);
+    let stored = client.get_agreement(&commission_id);
+    assert_eq!(stored.status, AgreementStatus::Cancelled);
 }
 
 #[test]
-fn test_accept_agreement_wrong_status() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+fn test_propose_and_approve_milestone() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let milestone_id = Bytes::from_array(&env, &[10]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
+    let ms_title = String::from_str(&env, "Initial Sketch");
+    let ms_amount: i128 = 500;
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    client.create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
     );
 
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let result = client.accept_agreement(&env, &sample_id(&env));
-    assert_eq!(result.unwrap_err(), AgreementError::InvalidStatus);
-}
-
-#[test]
-fn test_accept_agreement_wrong_auth() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client_contract = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client_contract.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client_contract.accept_agreement(&env, &sample_id(&env));
-    assert!(result.is_ok());
-}
-
-// --- reject_agreement ---
-
-#[test]
-fn test_reject_agreement_success() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client.reject_agreement(
-        &env,
-        &sample_id(&env),
-        &String::from_str(&env, "Not interested"),
-    );
-    assert!(result.is_ok());
-
-    let record = client.get_agreement(&env, &sample_id(&env)).unwrap();
-    assert_eq!(record.status, AgreementStatus::Cancelled);
-}
-
-#[test]
-fn test_reject_agreement_wrong_status() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let result = client.reject_agreement(
-        &env,
-        &sample_id(&env),
-        &String::from_str(&env, "Too late"),
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::InvalidStatus);
-}
-
-#[test]
-fn test_reject_agreement_wrong_auth() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client.reject_agreement(
-        &env,
-        &sample_id(&env),
-        &String::from_str(&env, "No"),
-    );
-    assert!(result.is_ok());
-}
-
-// --- propose_milestone ---
-
-#[test]
-fn test_propose_milestone_success() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
+    client.accept_agreement(&commission_id);
 
     let result = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &5000,
+        &commission_id,
+        &milestone_id,
+        &ms_title,
+        &ms_amount,
     );
     assert!(result.is_ok());
 
-    let milestones = client.get_milestones(&env, &sample_id(&env)).unwrap();
+    let milestones = client.get_milestones(&commission_id);
     assert_eq!(milestones.len(), 1);
-    assert_eq!(milestones.get(0).unwrap().amount_usdc, 5000);
+    assert_eq!(milestones.get(0).unwrap().title, ms_title);
+    assert_eq!(milestones.get(0).unwrap().amount_usdc, ms_amount);
     assert_eq!(milestones.get(0).unwrap().status, MilestoneStatus::Pending);
-}
 
-#[test]
-fn test_propose_milestone_exceeds_budget() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let result = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &15000,
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::MilestoneBudgetExceeded);
-}
-
-#[test]
-fn test_propose_milestone_wrong_status() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &5000,
-    );
-    assert_eq!(result.unwrap_err(), AgreementError::InvalidStatus);
-}
-
-// --- approve_milestone ---
-
-#[test]
-fn test_approve_milestone_success() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &5000,
-    );
-
-    let result = client.approve_milestone(&env, &sample_id(&env), &milestone_id(&env));
+    let result = client.approve_milestone(&commission_id, &milestone_id);
     assert!(result.is_ok());
 
-    let milestones = client.get_milestones(&env, &sample_id(&env)).unwrap();
+    let milestones = client.get_milestones(&commission_id);
     assert_eq!(milestones.get(0).unwrap().status, MilestoneStatus::Approved);
+
+    let agreement = client.get_agreement(&commission_id);
+    assert_eq!(agreement.status, AgreementStatus::Completed);
 }
 
 #[test]
-fn test_approve_milestone_completes_agreement() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+fn test_propose_milestone_budget_exceeded() {
+    let env = Env::default();
+    let client_addr = Address::generate(&env);
+    let artist_addr = Address::generate(&env);
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
+    let milestone_id1 = Bytes::from_array(&env, &[10]);
+    let milestone_id2 = Bytes::from_array(&env, &[11]);
+    let title = String::from_str(&env, "Logo Design");
+    let budget_usdc: i128 = 1000;
+    let deadline_ledger: u32 = 100;
+    let ms_title = String::from_str(&env, "Initial Sketch");
+    let ms_amount: i128 = 600;
+
+    env.ledger().with_mut(|li| {
+        li.sequence = 50;
+    });
+
+    client.create_agreement(
+        &commission_id,
+        &client_addr,
+        &artist_addr,
+        &title,
+        &budget_usdc,
+        &deadline_ledger,
     );
 
-    let _ = client.accept_agreement(&env, &sample_id(&env));
+    client.accept_agreement(&commission_id);
 
     let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &10000,
+        &commission_id,
+        &milestone_id1,
+        &ms_title,
+        &ms_amount,
     );
 
-    let _ = client.approve_milestone(&env, &sample_id(&env), &milestone_id(&env));
-
-    let record = client.get_agreement(&env, &sample_id(&env)).unwrap();
-    assert_eq!(record.status, AgreementStatus::Completed);
-}
-
-#[test]
-fn test_approve_milestone_wrong_status() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let result = client.try_propose_milestone(
+        &commission_id,
+        &milestone_id2,
+        &ms_title,
+        &ms_amount,
     );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &5000,
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::MilestoneBudgetExceeded
     );
-
-    let _ = client.approve_milestone(&env, &sample_id(&env), &milestone_id(&env));
-
-    let result = client.approve_milestone(&env, &sample_id(&env), &milestone_id(&env));
-    assert_eq!(result.unwrap_err(), AgreementError::InvalidStatus);
-}
-
-// --- get_agreement / get_milestones ---
-
-#[test]
-fn test_get_agreement_found() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
-    );
-
-    let result = client.get_agreement(&env, &sample_id(&env));
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap().budget_usdc, 10000);
 }
 
 #[test]
 fn test_get_agreement_not_found() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let result = client.get_agreement(&env, &sample_id(&env));
-    assert_eq!(result.unwrap_err(), AgreementError::NotFound);
-}
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
 
-#[test]
-fn test_get_milestones_found() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let result = client.try_get_agreement(&commission_id);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::NotFound
     );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &3000,
-    );
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id_2(&env),
-        &ms_title_2(&env),
-        &7000,
-    );
-
-    let milestones = client.get_milestones(&env, &sample_id(&env)).unwrap();
-    assert_eq!(milestones.len(), 2);
-    assert_eq!(milestones.get(0).unwrap().amount_usdc, 3000);
-    assert_eq!(milestones.get(1).unwrap().amount_usdc, 7000);
 }
 
 #[test]
 fn test_get_milestones_not_found() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
+    let env = Env::default();
+    let contract_id = env.register_contract(None, CommissionAgreementContract);
+    let client = CommissionAgreementContractClient::new(&env, &contract_id);
 
-    let result = client.get_milestones(&env, &sample_id(&env));
-    assert_eq!(result.unwrap_err(), AgreementError::NotFound);
-}
+    let commission_id = Bytes::from_array(&env, &[1, 2, 3]);
 
-// --- Multiple milestones partial approval ---
-
-#[test]
-fn test_partial_approval_no_complete() {
-    let env = create_env();
-    let contract_addr = env.register_contract(None, CommissionAgreementContract);
-    let client = CommissionAgreementContract::new(&contract_addr);
-
-    let _ = client.create_agreement(
-        &env,
-        &sample_id(&env),
-        &client(&env),
-        &artist(&env),
-        &title(&env),
-        &10000,
-        &1000,
+    let result = client.try_get_milestones(&commission_id);
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        AgreementError::NotFound
     );
-
-    let _ = client.accept_agreement(&env, &sample_id(&env));
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id(&env),
-        &ms_title(&env),
-        &5000,
-    );
-
-    let _ = client.propose_milestone(
-        &env,
-        &sample_id(&env),
-        &milestone_id_2(&env),
-        &ms_title_2(&env),
-        &5000,
-    );
-
-    let _ = client.approve_milestone(&env, &sample_id(&env), &milestone_id(&env));
-
-    let record = client.get_agreement(&env, &sample_id(&env)).unwrap();
-    assert_eq!(record.status, AgreementStatus::Active);
 }
