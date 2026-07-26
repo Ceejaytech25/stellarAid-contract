@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Bytes, Env};
 
+pub mod cross_contract;
 pub mod errors;
 pub mod storage;
 
@@ -65,6 +66,27 @@ impl EscrowContract {
 
         token::Client::new(&env, &usdc_token).transfer(
             &client, &env.current_contract_address(), &amount,
+        let fee_bps: u32 = env.invoke_contract(
+            &config_contract,
+            &symbol_short!("get_fee_b"),
+            soroban_sdk::vec![&env],
+        );
+        let usdc_token: Address = env.invoke_contract(
+            &config_contract,
+            &symbol_short!("get_usdc"),
+            soroban_sdk::vec![&env],
+        );
+
+        // #481 – verify client holds sufficient USDC before locking funds
+        let client_balance = token::Client::new(&env, &usdc_token).balance(&client);
+        if client_balance < amount {
+            return Err(EscrowError::InsufficientBalance);
+        }
+
+        token::Client::new(&env, &usdc_token).transfer(
+            &client,
+            &env.current_contract_address(),
+            &amount,
         );
 
         save_escrow(

@@ -15,4 +15,6 @@ pub enum EscrowError {
     Reentrant = 9,
     /// #485 – client and artist addresses must be distinct, or an address failed validation.
     InvalidAddress = 10,
+    /// Added for #481: client does not hold enough USDC to fund the escrow.
+    InsufficientBalance = 9,
 }
