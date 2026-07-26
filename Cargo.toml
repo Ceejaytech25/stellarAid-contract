@@ -3,6 +3,7 @@ members = [
     "contracts/shared",
     "contracts/platform_config",
     "contracts/escrow",
+    "contracts/dispute_arbiter",
 ]
 resolver = "2"
 
