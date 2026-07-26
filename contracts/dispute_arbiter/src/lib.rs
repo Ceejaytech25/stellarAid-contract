@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Bytes, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, Env, IntoVal, String};
 
 pub mod errors;
 pub mod types;
@@ -64,7 +64,7 @@ fn dispute_exists(env: &Env, commission_id: &Bytes) -> bool {
         .has(&DataKey::Dispute(commission_id.clone()))
 }
 
-fn get_dispute(env: &Env, commission_id: &Bytes) -> Result<DisputeRecord, DisputeError> {
+fn load_dispute(env: &Env, commission_id: &Bytes) -> Result<DisputeRecord, DisputeError> {
     if !dispute_exists(env, commission_id) {
         return Err(DisputeError::NotFound);
     }
@@ -143,7 +143,7 @@ impl DisputeArbiter {
     ) -> Result<(), DisputeError> {
         let admin = get_admin(&env)?;
         admin.require_auth();
-        let mut record = get_dispute(&env, &commission_id)?;
+        let mut record = load_dispute(&env, &commission_id)?;
         if record.status != DisputeStatus::Open {
             return Err(DisputeError::InvalidStatus);
         }
@@ -169,7 +169,7 @@ impl DisputeArbiter {
     ) -> Result<(), DisputeError> {
         let admin = get_admin(&env)?;
         admin.require_auth();
-        let mut record = get_dispute(&env, &commission_id)?;
+        let mut record = load_dispute(&env, &commission_id)?;
         if record.status != DisputeStatus::Open {
             return Err(DisputeError::InvalidStatus);
         }
@@ -177,7 +177,7 @@ impl DisputeArbiter {
         let config_contract = get_config_contract(&env)?;
         env.invoke_contract::<()>(
             &escrow_contract,
-            &symbol_short!("release_pa"),
+            &symbol_short!("rel_pay"),
             soroban_sdk::vec![&env, commission_id.clone().into_val(&env), config_contract.into_val(&env)],
         );
         record.status = DisputeStatus::ResolvedForArtist;
@@ -199,7 +199,7 @@ impl DisputeArbiter {
         if client_share_bps > 10000 {
             return Err(DisputeError::InvalidShareBps);
         }
-        let mut record = get_dispute(&env, &commission_id)?;
+        let mut record = load_dispute(&env, &commission_id)?;
         if record.status != DisputeStatus::Open {
             return Err(DisputeError::InvalidStatus);
         }
@@ -269,7 +269,7 @@ impl DisputeArbiter {
         if !has_admin(&env) {
             return Err(DisputeError::NotInitialized);
         }
-        let mut record = get_dispute(&env, &commission_id)?;
+        let mut record = load_dispute(&env, &commission_id)?;
         if record.status != DisputeStatus::Open {
             return Err(DisputeError::InvalidStatus);
         }
@@ -292,7 +292,7 @@ impl DisputeArbiter {
     }
 
     pub fn get_dispute(env: Env, commission_id: Bytes) -> Result<DisputeRecord, DisputeError> {
-        get_dispute(&env, &commission_id)
+        load_dispute(&env, &commission_id)
     }
 }
 

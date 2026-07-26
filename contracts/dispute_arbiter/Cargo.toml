@@ -1,5 +1,7 @@
 [package]
 name = "dispute_arbiter"
+version = "0.1.0"
+edition = "2021"
 version.workspace = true
 edition.workspace = true
 
@@ -7,6 +9,7 @@ edition.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+soroban-sdk = { workspace = true }
 soroban-sdk.workspace = true
 
 [dev-dependencies]
