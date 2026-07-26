@@ -1,3 +1,11 @@
+//! CommissionAgreement contract — core agreement lifecycle functions.
+//!
+//! Implements:
+//! - `create_agreement`    (closes #457, closes #458)
+//! - `accept_agreement`    (closes #459)
+//! - `reject_agreement`    (closes #459)
+//! - `propose_milestone`   (closes #460)
+
 #![no_std]
 
 #[cfg(test)]
@@ -15,6 +23,14 @@ pub struct CommissionAgreementContract;
 
 #[contractimpl]
 impl CommissionAgreementContract {
+    /// Create a new commission agreement.
+    ///
+    /// Closes #457, closes #458.
+    ///
+    /// # Errors
+    /// - [`AgreementError::InvalidAmount`] if `budget_usdc <= 0`
+    /// - [`AgreementError::DeadlineInPast`] if `deadline_ledger <= current sequence`
+    /// - [`AgreementError::AlreadyExists`] if an agreement with the same `commission_id` exists
     pub fn create_agreement(
         env: Env,
         commission_id: Bytes,
@@ -58,6 +74,9 @@ impl CommissionAgreementContract {
         Ok(())
     }
 
+    /// Accept a pending commission agreement (artist auth required).
+    ///
+    /// Sets status to `Active` and emits `AgreementAccepted`. Closes #459.
     pub fn accept_agreement(env: Env, commission_id: Bytes) -> Result<(), AgreementError> {
         let mut record: AgreementRecord = env.storage().persistent()
             .get(&DataKey::Agreement(commission_id.clone()))
@@ -76,6 +95,9 @@ impl CommissionAgreementContract {
         Ok(())
     }
 
+    /// Reject a pending commission agreement (artist auth required).
+    ///
+    /// Sets status to `Cancelled` and emits `AgreementRejected`. Closes #459.
     pub fn reject_agreement(env: Env, commission_id: Bytes, reason: String) -> Result<(), AgreementError> {
         let mut record: AgreementRecord = env.storage().persistent()
             .get(&DataKey::Agreement(commission_id.clone()))
@@ -94,6 +116,10 @@ impl CommissionAgreementContract {
         Ok(())
     }
 
+    /// Propose a new milestone on an active agreement (artist auth required).
+    ///
+    /// Validates the cumulative milestone budget does not exceed `budget_usdc`.
+    /// Emits `MilestoneProposed`. Closes #460.
     pub fn propose_milestone(
         env: Env,
         commission_id: Bytes,
