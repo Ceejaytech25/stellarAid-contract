@@ -11,4 +11,6 @@ pub enum EscrowError {
     InvalidFeeBps = 6,
     DisputeAlreadyOpen = 7,
     NotExpired = 8,
+    /// Added for #481: client does not hold enough USDC to fund the escrow.
+    InsufficientBalance = 9,
 }
