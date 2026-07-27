@@ -11,6 +11,15 @@
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod milestone_flow;
+
+#[cfg(test)]
+mod multiple_escrows;
+
+#[cfg(test)]
+mod dispute_resolution;
+
 mod errors;
 mod types;
 
