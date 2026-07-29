@@ -47,8 +47,6 @@ impl PlatformConfigContract {
     pub fn set_fee_bps(env: Env, fee_bps: u32) -> Result<(), ConfigError> {
         let admin = get_admin(&env);
         admin.require_auth();
-        env.current_contract_address().require_auth();
-        let _ = admin;
         if fee_bps > 1000 {
             return Err(ConfigError::InvalidFeeBps);
         }
