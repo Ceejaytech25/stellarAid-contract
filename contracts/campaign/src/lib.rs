@@ -172,6 +172,27 @@ impl CampaignContract {
     }
 
     /// Bumps the TTL of a campaign to ensure it doesn't expire.
+    /// Archive (delete) a campaign record.
+    /// Only the admin can archive a campaign, and only if its status is
+    /// Completed, Rejected, Cancelled, or Suspended (i.e., no active funds
+    /// in flight).
+    pub fn archive_campaign(env: Env, admin: Address, campaign_id: u64) {
+        admin.require_auth();
+        Self::ensure_admin(&env, &admin);
+        let campaign = Self::get_campaign(env.clone(), campaign_id).unwrap();
+        match campaign.status {
+            CampaignStatus::Active | CampaignStatus::Pending => {
+                panic!("cannot archive an active or pending campaign");
+            }
+            _ => {}
+        }
+        env.storage().persistent().remove(&DataKey::Campaign(campaign_id));
+        env.events().publish(
+            (Symbol::new(&env, "campaign_archived"),),
+            (campaign_id,),
+        );
+    }
+
     pub fn bump_campaign_ttl(env: Env, campaign_id: u64) {
         let key = DataKey::Campaign(campaign_id);
         env.storage().persistent().extend_ttl(&key, MIN_TTL, MAX_TTL);
