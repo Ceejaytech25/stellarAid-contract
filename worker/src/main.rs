@@ -3,7 +3,8 @@ pub mod db;
 pub mod models;
 pub mod services;
 
-use sdk::logging;
+use std::collections::HashMap;
+use std::time::Instant;
 
 use axum::{
     extract::{Path, State},
@@ -14,14 +15,14 @@ use axum::{
 };
 use sdk::{
     errors::StellarAidError,
-    logging,
     retry::{retry_async, RetryConfig},
     soroban::rpc_client::SorobanRpcClient,
     transaction_builder::{build_donate_transaction_full, DonationParams, NetworkConfig},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::info;
+use tokio::sync::RwLock;
+use tracing::{info, warn};
 use webhooks::{WebhookManager, WebhookPayload};
 
 #[derive(Debug, Deserialize)]
@@ -58,11 +59,38 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: &'static str,
+    pub uptime_seconds: u64,
+    pub metrics: MetricsSummary,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MetricsSummary {
+    pub total_donations_submitted: u64,
+    pub total_donations_verified: u64,
+    pub total_errors: u64,
+    pub recent_errors: Vec<String>,
+    pub rpc_connected: bool,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub network_config: NetworkConfig,
     pub donation_contract_id: String,
     pub webhook_manager: WebhookManager,
+    pub metrics: Arc<RwLock<MetricsData>>,
+    pub startup_time: Instant,
+}
+
+#[derive(Clone, Default)]
+pub struct MetricsData {
+    pub donations_submitted: u64,
+    pub donations_verified: u64,
+    pub errors: u64,
+    pub error_log: Vec<String>,
 }
 
 async fn submit_donation(
@@ -70,6 +98,9 @@ async fn submit_donation(
     Json(req): Json<SubmitDonationRequest>,
 ) -> Result<Json<SubmitDonationResponse>, (StatusCode, Json<ErrorResponse>)> {
     if req.amount <= 0 {
+        let mut metrics = state.metrics.write().await;
+        metrics.errors += 1;
+        metrics.error_log.push("submit_donation: amount must be positive".into());
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -98,6 +129,9 @@ async fn submit_donation(
     })
     .await
     .map_err(|e| {
+        let mut metrics = state.metrics.blocking_write();
+        metrics.errors += 1;
+        metrics.error_log.push(format!("submit_donation: {}", e));
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -105,6 +139,9 @@ async fn submit_donation(
             }),
         )
     })?;
+
+    let mut metrics = state.metrics.write().await;
+    metrics.donations_submitted += 1;
 
     Ok(Json(SubmitDonationResponse {
         xdr,
@@ -126,6 +163,9 @@ async fn get_donation(
     })
     .await
     .map_err(|e| {
+        let mut metrics = state.metrics.blocking_write();
+        metrics.errors += 1;
+        metrics.error_log.push(format!("get_donation: {}", e));
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -133,6 +173,9 @@ async fn get_donation(
             }),
         )
     })?;
+
+    let mut metrics = state.metrics.write().await;
+    metrics.donations_verified += 1;
 
     let status_str = match status {
         sdk::soroban::rpc_client::TransactionStatus::Pending => "pending".to_string(),
@@ -153,8 +196,48 @@ async fn get_donation(
     }))
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok" }))
+/// Health endpoint that returns service status and operational metrics.
+/// Used by monitoring systems and load balancers.
+async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let metrics = state.metrics.read().await;
+    let recent_errors: Vec<String> = metrics.error_log.iter()
+        .rev()
+        .take(10)
+        .cloned()
+        .collect();
+
+    // Quick RPC connectivity check
+    let rpc_connected = SorobanRpcClient::new(&state.network_config.rpc_url)
+        .get_health()
+        .await
+        .is_ok();
+
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        version: env!("CARGO_PKG_VERSION"),
+        uptime_seconds: state.startup_time.elapsed().as_secs(),
+        metrics: MetricsSummary {
+            total_donations_submitted: metrics.donations_submitted,
+            total_donations_verified: metrics.donations_verified,
+            total_errors: metrics.errors,
+            recent_errors,
+            rpc_connected,
+        },
+    })
+}
+
+/// Readiness endpoint for load balancer checks.
+async fn readiness(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let rpc_connected = SorobanRpcClient::new(&state.network_config.rpc_url)
+        .get_health()
+        .await
+        .is_ok();
+    let ready = rpc_connected;
+
+    Json(serde_json::json!({
+        "ready": ready,
+        "rpc_connected": rpc_connected,
+    }))
 }
 
 #[tokio::main]
@@ -178,10 +261,13 @@ async fn main() {
         network_config,
         donation_contract_id,
         webhook_manager: WebhookManager::new(),
+        metrics: Arc::new(RwLock::new(MetricsData::default())),
+        startup_time: Instant::now(),
     });
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/ready", get(readiness))
         .route("/api/donations/submit", post(submit_donation))
         .route("/api/donations/{tx_hash}", get(get_donation))
         .with_state(state);
