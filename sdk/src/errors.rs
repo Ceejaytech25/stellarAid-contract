@@ -23,6 +23,9 @@ pub enum StellarAidError {
 
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
+
+    #[error("Wallet connection error: {0}")]
+    WalletConnection(String),
 }
 
 impl StellarAidError {

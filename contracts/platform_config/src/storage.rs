@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, Address, Env};
 
+use crate::types::FeeTokenMetadata;
+
 #[contracttype]
 pub enum DataKey {
     Admin,
@@ -7,6 +9,11 @@ pub enum DataKey {
     PlatformWallet,
     UsdcToken,
     PendingAdmin,
+    TokenName,
+    TokenSymbol,
+    TokenDecimal,
+    MinFeeBps,
+    MaxFeeBps,
 }
 
 pub fn get_admin(env: &Env) -> Address {
@@ -41,4 +48,51 @@ pub fn set_pending_admin(env: &Env, admin: &Address) {
 }
 pub fn is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Admin)
+}
+
+pub fn get_token_name(env: &Env) -> soroban_sdk::String {
+    env.storage().instance().get(&DataKey::TokenName).unwrap()
+}
+pub fn set_token_name(env: &Env, name: &soroban_sdk::String) {
+    env.storage().instance().set(&DataKey::TokenName, name);
+}
+pub fn get_token_symbol(env: &Env) -> soroban_sdk::String {
+    env.storage().instance().get(&DataKey::TokenSymbol).unwrap()
+}
+pub fn set_token_symbol(env: &Env, symbol: &soroban_sdk::String) {
+    env.storage().instance().set(&DataKey::TokenSymbol, symbol);
+}
+pub fn get_token_decimal(env: &Env) -> u32 {
+    env.storage().instance().get(&DataKey::TokenDecimal).unwrap()
+}
+pub fn set_token_decimal(env: &Env, decimal: u32) {
+    env.storage().instance().set(&DataKey::TokenDecimal, &decimal);
+}
+pub fn get_min_fee_bps(env: &Env) -> u32 {
+    env.storage().instance().get(&DataKey::MinFeeBps).unwrap_or(0)
+}
+pub fn set_min_fee_bps(env: &Env, bps: u32) {
+    env.storage().instance().set(&DataKey::MinFeeBps, &bps);
+}
+pub fn get_max_fee_bps(env: &Env) -> u32 {
+    env.storage().instance().get(&DataKey::MaxFeeBps).unwrap_or(1000)
+}
+pub fn set_max_fee_bps(env: &Env, bps: u32) {
+    env.storage().instance().set(&DataKey::MaxFeeBps, &bps);
+}
+pub fn get_fee_token_metadata(env: &Env) -> FeeTokenMetadata {
+    FeeTokenMetadata {
+        name: get_token_name(env),
+        symbol: get_token_symbol(env),
+        decimal: get_token_decimal(env),
+        min_fee_bps: get_min_fee_bps(env),
+        max_fee_bps: get_max_fee_bps(env),
+    }
+}
+pub fn set_fee_token_metadata(env: &Env, meta: &FeeTokenMetadata) {
+    set_token_name(env, &meta.name);
+    set_token_symbol(env, &meta.symbol);
+    set_token_decimal(env, meta.decimal);
+    set_min_fee_bps(env, meta.min_fee_bps);
+    set_max_fee_bps(env, meta.max_fee_bps);
 }

@@ -7,7 +7,7 @@ pub mod types;
 
 use errors::ConfigError;
 use storage::*;
-use types::PlatformConfig;
+use types::{FeeTokenMetadata, PlatformConfig};
 
 #[contract]
 pub struct PlatformConfigContract;
@@ -79,6 +79,29 @@ impl PlatformConfigContract {
         set_admin(&env, &pending);
         env.events().publish((symbol_short!("admtxfrd"),), pending);
         Ok(())
+    }
+
+    pub fn set_token_metadata(
+        env: Env,
+        name: soroban_sdk::String,
+        symbol: soroban_sdk::String,
+        decimal: u32,
+        min_fee_bps: u32,
+        max_fee_bps: u32,
+    ) -> Result<(), ConfigError> {
+        let admin = get_admin(&env);
+        admin.require_auth();
+        if max_fee_bps > 1000 {
+            return Err(ConfigError::InvalidFeeBps);
+        }
+        let meta = FeeTokenMetadata { name, symbol, decimal, min_fee_bps, max_fee_bps };
+        set_fee_token_metadata(&env, &meta);
+        env.events().publish((symbol_short!("tkmeta"),), ());
+        Ok(())
+    }
+
+    pub fn get_token_metadata(env: Env) -> FeeTokenMetadata {
+        get_fee_token_metadata(&env)
     }
 }
 
