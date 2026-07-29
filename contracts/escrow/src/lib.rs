@@ -196,3 +196,5 @@ impl EscrowContract {
 mod tests;
 #[cfg(test)]
 mod refund_tests;
+#[cfg(test)]
+mod integration_tests;
