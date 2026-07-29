@@ -1,6 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
@@ -23,11 +23,13 @@ pub struct WebhookPayload {
 }
 
 type WebhookStore = Arc<RwLock<HashMap<String, Vec<WebhookConfig>>>>;
+type DedupStore = Arc<RwLock<HashSet<String>>>;
 
 #[derive(Clone)]
 pub struct WebhookManager {
     client: Client,
     store: WebhookStore,
+    delivered: DedupStore,
 }
 
 impl WebhookManager {
@@ -35,6 +37,7 @@ impl WebhookManager {
         Self {
             client: Client::new(),
             store: Arc::new(RwLock::new(HashMap::new())),
+            delivered: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -45,11 +48,24 @@ impl WebhookManager {
         info!(campaign_id = campaign_id, "webhook registered");
     }
 
+    /// Returns true if this payload was already dispatched (dedup check).
+    fn dedup_key(payload: &WebhookPayload) -> String {
+        format!("{}:{}:{}:{}", payload.event, payload.campaign_id, payload.tx_hash, payload.amount)
+    }
+
     pub async fn dispatch(&self, campaign_id: u64, payload: WebhookPayload) {
-        let key = campaign_id.to_string();
+        let dk = Self::dedup_key(&payload);
+        {
+            let delivered = self.delivered.read().await;
+            if delivered.contains(&dk) {
+                info!(campaign_id = campaign_id, event = %payload.event, "webhook already delivered, skipping");
+                return;
+            }
+        }
+
         let configs = {
             let store = self.store.read().await;
-            store.get(&key).cloned().unwrap_or_default()
+            store.get(&campaign_id.to_string()).cloned().unwrap_or_default()
         };
 
         for config in &configs {
@@ -78,6 +94,11 @@ impl WebhookManager {
                     error!(url = %config.url, error = %e, "webhook delivery failed");
                 }
             }
+        }
+
+        {
+            let mut delivered = self.delivered.write().await;
+            delivered.insert(dk);
         }
     }
 }
