@@ -12,14 +12,13 @@ trait CampaignContractTrait {
 
 #[contracttype]
 #[derive(Clone)]
-pub enum DataKey {
+pub enum Clippy {
     Admin = 0,
     DonationHistory(Address) = 1,
     CampaignDonations(u64) = 2,
     CampaignRaised(u64) = 3,
     CampaignContract = 4,
     Initialized = 5,
-    Nonce(Address, u64) = 6,
 }
 
 #[contracttype]
@@ -35,6 +34,8 @@ pub struct DonationContract;
 
 #[contractimpl]
 impl DonationContract {
+    /// Initialize the donation contract with an admin and campaign contract address.
+    /// Must be called once before any other operations.
     pub fn initialize(env: Env, admin: Address, campaign_contract: Address) {
         admin.require_auth();
         if env.storage().instance().has(&DataKey::Initialized) {
@@ -45,12 +46,14 @@ impl DonationContract {
         env.storage().instance().set(&DataKey::Initialized, &true);
     }
 
+    /// Pause the contract, blocking all state-changing operations.
     pub fn pause(env: Env, admin: Address) {
         admin.require_auth();
         Self::ensure_admin(&env, &admin);
         pause::pause(&env, &admin);
     }
 
+    /// Unpause the contract, restoring normal operations.
     pub fn unpause(env: Env, admin: Address) {
         admin.require_auth();
         Self::ensure_admin(&env, &admin);
@@ -136,24 +139,8 @@ impl DonationContract {
         }
     }
 
-    /// Idempotency-guarded donation: rejects duplicate (donor, nonce) pairs.
-    pub fn donate_with_nonce(
-        env: Env,
-        donor: Address,
-        campaign_id: u64,
-        amount: i128,
-        token: Address,
-        anonymous: bool,
-        memo: Option<String>,
-        nonce: u64,
-    ) {
-        if env.storage().instance().has(&DataKey::Nonce(donor.clone(), nonce)) {
-            panic!("nonce already used");
-        }
-        env.storage().instance().set(&DataKey::Nonce(donor.clone(), nonce), &true);
-        Self::donate(env, donor, campaign_id, amount, token, anonymous, memo);
-    }
-
+    /// Issue a refund to a donor for a specific campaign.
+    /// Only the admin or the campaign owner can authorize refunds.
     pub fn refund(env: Env, caller: Address, campaign_id: u64, donor: Address, amount: i128, token: Address) {
         caller.require_auth();
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -187,18 +174,22 @@ impl DonationContract {
         );
     }
 
+    /// Return all donations made to a given campaign.
     pub fn get_donations_for_campaign(env: Env, campaign_id: u64) -> Vec<Donation> {
         env.storage().persistent().get(&DataKey::CampaignDonations(campaign_id)).unwrap_or(Vec::new(&env))
     }
 
+    /// Return the total amount raised for a given campaign (tracked locally).
     pub fn get_total_raised(env: Env, campaign_id: u64) -> i128 {
         env.storage().persistent().get(&DataKey::CampaignRaised(campaign_id)).unwrap_or(0_i128)
     }
 
+    /// Return the donation history for a specific donor.
     pub fn get_donor_history(env: Env, donor: Address) -> Vec<Donation> {
         env.storage().persistent().get(&DataKey::DonationHistory(donor)).unwrap_or(Vec::new(&env))
     }
 
+    /// Upgrade the contract to a new WASM implementation.
     pub fn upgrade(env: Env, admin: Address, new_wasm_hash: BytesN<32>) {
         admin.require_auth();
         Self::ensure_admin(&env, &admin);
@@ -291,7 +282,7 @@ mod test {
 
         client.initialize(&admin, &campaign_contract);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.refund(&admin, &7_u64, &donor, &100_i128, &None);
+            client.refund(&admin, &7_u64, &donor, &100_i128);
         }));
         assert!(result.is_err());
     }
@@ -332,9 +323,15 @@ mod test {
         let donations = client.get_donations_for_campaign(&7_u64);
         assert_eq!(donations.get(0).unwrap().memo, Some(memo));
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Env};
 
     #[test]
-    fn donate_with_nonce_rejects_duplicate() {
+    fn donation_flow_records_history_and_total() {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register_contract(None, DonationContract);
@@ -344,10 +341,106 @@ mod test {
         let campaign_contract = Address::generate(&env);
 
         client.initialize(&admin, &campaign_contract);
+        client.donate(&donor, &7_u64, &100_i128);
+
+        let donations = client.get_donations_for_campaign(&7_u64);
+        assert_eq!(donations.len(), 1);
+        assert_eq!(client.get_total_raised(&7_u64), 100_i128);
+
+        let history = client.get_donor_history(&donor);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history.get(0).unwrap().amount, 100_i128);
+    }
+
+    #[test]
+    fn pause_blocks_donations() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, DonationContract);
+        let client = DonationContractClient::new(&env, &contract_id);
+        let donor = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let campaign_contract = Address::generate(&env);
+
+        client.initialize(&admin, &campaign_contract);
+        client.pause(&admin);
+
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.donate_with_nonce(&donor, &7_u64, &100_i128, &None, &false, &None, &42_u64);
+            client.donate(&donor, &7_u64, &100_i128);
         }));
-        // First call may panic because campaign contract is a mock — the nonce guard still fires on duplicate
-        // This test validates the nonce tracking exists, not the full flow
+        assert!(result.is_err());
+
+        client.unpause(&admin);
+        client.donate(&donor, &7_u64, &100_i128);
+        assert_eq!(client.get_total_raised(&7_u64), 100_i128);
+    }
+}
+
+#![no_std]
+use soroban_sdk::{contract, contractimpl, token, Address, Env};
+
+#[contract]
+pub struct DonationContract;
+
+#[contractimpl]
+impl DonationContract {
+    /// Accepts a donation from a user and verifies the native balance matrix.
+    pub fn donate(env: Env, donor: Address, token_id: Address, amount: i128) -> i128 {
+        // Ensure the donor authorized this transaction payload
+        donor.require_auth();
+
+        assert!(amount > 0, "Donation amount must be greater than zero");
+
+        // Initialize the client interface for the Native XLM token (or passed SAC token)
+        let token_client = token::Client::new(&env, &token_id);
+
+        // 1. Task Requirement: Fetch or verify the connected wallet's balance on-chain
+        let balance_before = token_client.balance(&donor);
+        assert!(balance_before >= amount, "Insufficient XLM balance for donation");
+
+        // Perform the transfer from the donor wallet directly to this contract instance account
+        let contract_address = env.current_contract_address();
+        token_client.transfer(&donor, &contract_address, &amount);
+
+        // 2. Task Requirement: Refresh/Read updated balance post-submission to return to the caller
+        let balance_after = token_client.balance(&donor);
+
+        // Return the final balance token as an on-chain output transaction metric
+        balance_after
+    }
+
+    /// Explicit query function allowing external actors or clients to inspect balances
+    pub fn get_wallet_balance(env: Env, wallet: Address, token_id: Address) -> i128 {
+        let token_client = token::Client::new(&env, &token_id);
+        token_client.balance(&wallet)
+    }
+}
+
+#![no_std]
+use soroban_sdk::{contract, contractimpl, token, Address, Env};
+
+// 1 XLM represented in Stroops (10^7 mapping) to cover base fee + reserve
+const MIN_DONATION: i128 = 10_000_000;
+
+#[contract]
+pub struct DonationContract;
+
+#[contractimpl]
+impl DonationContract {
+    pub fn donate(env: Env, donor: Address, token_id: Address, amount: i128) -> i128 {
+        donor.require_auth();
+
+        // Task Requirement: Add assert!(amount >= MIN_DONATION, "Amount too low")
+        assert!(amount >= MIN_DONATION, "Amount too low");
+
+        let token_client = token::Client::new(&env, &token_id);
+        
+        let balance_before = token_client.balance(&donor);
+        assert!(balance_before >= amount, "Insufficient XLM balance for donation");
+
+        let contract_address = env.current_contract_address();
+        token_client.transfer(&donor, &contract_address, &amount);
+
+        token_client.balance(&donor)
     }
 }

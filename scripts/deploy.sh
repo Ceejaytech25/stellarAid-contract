@@ -15,8 +15,70 @@ done
 if [ -z "$ADMIN_SECRET" ]; then
   echo "Usage: $0 [network] [admin_secret] [--dry-run]"
   echo "Or set STELLAR_PLATFORM_SECRET environment variable."
+# ── Preflight checks (#523) ──────────────────────────────────────────────────
+
+preflight_check() {
+  local var_name="$1"
+  local var_value="$2"
+  if [ -z "$var_value" ]; then
+    echo "ERROR: Required variable $var_name is not set."
+    echo ""
+    echo "Usage: $0 [network] [admin_secret]"
+    echo "Or set STELLAR_PLATFORM_SECRET environment variable."
+    exit 1
+  fi
+  echo "  ✓ $var_name is set"
+}
+
+echo "Running deployment preflight checks..."
+preflight_check "NETWORK" "$NETWORK"
+preflight_check "ADMIN_SECRET" "$ADMIN_SECRET"
+
+# Verify required CLI tools
+for cmd in soroban cargo; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: Required command '$cmd' not found in PATH."
+    exit 1
+  fi
+  echo "  ✓ $cmd is available"
+done
+
+# Verify wasm target is installed
+if ! rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown; then
+  echo "ERROR: wasm32-unknown-unknown target not installed."
+  echo "Run: rustup target add wasm32-unknown-unknown"
   exit 1
 fi
+echo "  ✓ wasm32-unknown-unknown target is installed"
+
+# Validate network selection
+case "$NETWORK" in
+  testnet|mainnet)
+    echo "  ✓ NETWORK=$NETWORK is valid"
+    ;;
+  localhost)
+    echo "  ✓ NETWORK=$NETWORK (local development)"
+    RPC_URL="http://localhost:8000/soroban/rpc"
+    PASSPHRASE="Standalone Network ; February 2017"
+    ;;
+  *)
+    echo "ERROR: Unknown network '$NETWORK'. Use: testnet, mainnet, or localhost."
+    echo "Run with --dry-run to validate configuration without deploying."
+    exit 1
+    ;;
+esac
+
+# Dry-run mode: just validate and exit
+if [ "${2:-}" = "--dry-run" ] || [ "${DRY_RUN:-}" = "true" ]; then
+  echo ""
+  echo "Dry-run: all preflight checks passed. Set DRY_RUN=false to deploy."
+  exit 0
+fi
+
+# ── Network configuration ────────────────────────────────────────────────────
+
+RPC_URL=${RPC_URL:-}
+PASSPHRASE=${PASSPHRASE:-}
 
 if [ "$NETWORK" = "testnet" ]; then
   RPC_URL="https://soroban-testnet.stellar.org"
@@ -24,9 +86,6 @@ if [ "$NETWORK" = "testnet" ]; then
 elif [ "$NETWORK" = "mainnet" ]; then
   RPC_URL="https://soroban.stellar.org"
   PASSPHRASE="Public Global Stellar Network ; September 2015"
-else
-  echo "Unknown network: $NETWORK. Use testnet or mainnet."
-  exit 1
 fi
 
 echo "Network:  $NETWORK"
@@ -35,6 +94,8 @@ if [ "$DRY_RUN" = true ]; then
   echo "*** DRY RUN — no state changes will be made ***"
 fi
 
+echo ""
+echo "Configuring Soroban network: $NETWORK"
 soroban network add "$NETWORK" \
   --rpc-url "$RPC_URL" \
   --network-passphrase "$PASSPHRASE" 2>/dev/null || true
@@ -45,6 +106,7 @@ if [ "$DRY_RUN" = true ]; then
   exit 0
 fi
 
+echo ""
 echo "Building contracts..."
 cargo build --target wasm32-unknown-unknown --release
 
@@ -59,6 +121,10 @@ for contract in "${CONTRACTS[@]}"; do
     echo "Warning: $WASM not found, skipping $contract"
     continue
   fi
+    echo "ERROR: WASM file not found: $WASM"
+    exit 1
+  fi
+  echo ""
   echo "Deploying $contract..."
   CONTRACT_ID=$(soroban contract deploy \
     --wasm "$WASM" \
