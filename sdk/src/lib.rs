@@ -6,5 +6,6 @@ pub mod retry;
 pub mod setup;
 pub mod soroban;
 pub mod transaction_builder;
+pub mod transaction_simulator;
 pub mod utils;
 pub mod wallet;

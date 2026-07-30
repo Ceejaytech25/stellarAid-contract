@@ -20,6 +20,7 @@ pub struct WebhookPayload {
     pub amount: String,
     pub tx_hash: String,
     pub timestamp: u64,
+    pub idempotency_key: Option<String>,
 }
 
 type WebhookStore = Arc<RwLock<HashMap<String, Vec<WebhookConfig>>>>;
@@ -48,9 +49,12 @@ impl WebhookManager {
         info!(campaign_id = campaign_id, "webhook registered");
     }
 
-    /// Returns true if this payload was already dispatched (dedup check).
     fn dedup_key(payload: &WebhookPayload) -> String {
-        format!("{}:{}:{}:{}", payload.event, payload.campaign_id, payload.tx_hash, payload.amount)
+        if let Some(ref key) = payload.idempotency_key {
+            format!("idem:{}", key)
+        } else {
+            format!("evt:{}:{}:{}:{}", payload.event, payload.campaign_id, payload.tx_hash, payload.amount)
+        }
     }
 
     pub async fn dispatch(&self, campaign_id: u64, payload: WebhookPayload) {
@@ -100,6 +104,21 @@ impl WebhookManager {
             let mut delivered = self.delivered.write().await;
             delivered.insert(dk);
         }
+    }
+
+    pub fn verify_signature(secret: &[u8], body: &[u8], signature: &str) -> bool {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+
+        let mut mac = match HmacSha256::new_from_slice(secret) {
+            Ok(m) => m,
+            Err(_) => return false,
+        };
+        mac.update(body);
+        let expected = mac.finalize().into_bytes();
+        let expected_hex = hex::encode(expected);
+        expected_hex == signature
     }
 }
 
