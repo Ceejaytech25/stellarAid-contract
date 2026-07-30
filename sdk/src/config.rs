@@ -8,6 +8,29 @@ pub enum ConfigError {
     MissingVar(String),
 }
 
+/// Predefined network configurations for Stellar.
+#[derive(Debug, Clone)]
+pub struct NetworkConfig {
+    pub name: &'static str,
+    pub horizon_url: &'static str,
+    pub soroban_rpc_url: &'static str,
+    pub network_passphrase: &'static str,
+}
+
+pub const TESTNET: NetworkConfig = NetworkConfig {
+    name: "testnet",
+    horizon_url: "https://horizon-testnet.stellar.org",
+    soroban_rpc_url: "https://soroban-testnet.stellar.org",
+    network_passphrase: "Test SDF Network ; September 2015",
+};
+
+pub const MAINNET: NetworkConfig = NetworkConfig {
+    name: "mainnet",
+    horizon_url: "https://horizon.stellar.org",
+    soroban_rpc_url: "https://rpc.mainnet.soroban.stellar.org",
+    network_passphrase: "Public Global Stellar Network ; September 2015",
+};
+
 /// Application configuration loaded from environment variables.
 #[derive(Debug)]
 pub struct Config {
@@ -36,6 +59,18 @@ impl Config {
             soroban_rpc_url: require("SOROBAN_RPC_URL")?,
             soroban_network_passphrase: require("SOROBAN_NETWORK_PASSPHRASE")?,
         })
+    }
+
+    /// Create a Config from a predefined NetworkConfig + a secret key.
+    /// Useful for scripting against known networks without setting env vars.
+    pub fn from_network(network: &NetworkConfig, secret: &str) -> Self {
+        Self {
+            stellar_network: network.name.to_string(),
+            stellar_platform_secret: secret.to_string(),
+            horizon_url: network.horizon_url.to_string(),
+            soroban_rpc_url: network.soroban_rpc_url.to_string(),
+            soroban_network_passphrase: network.network_passphrase.to_string(),
+        }
     }
 }
 
