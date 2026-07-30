@@ -66,9 +66,19 @@ impl CampaignContract {
 
     /// Create a new fundraising campaign.
     /// Returns the newly assigned campaign ID.
-    pub fn create_campaign(env: Env, owner: Address, goal: i128, deadline: u64) -> u64 {
+    pub fn create_campaign(
+        env: Env,
+        owner: Address,
+        goal: i128,
+        deadline: u64,
+        fee_bps: u32,
+        platform_wallet: Option<Address>,
+    ) -> u64 {
         pause::require_not_paused(&env);
         owner.require_auth();
+        if fee_bps > 1000 {
+            panic!("fee_bps must not exceed 1000");
+        }
         let id = Self::next_campaign_id(&env);
         let campaign = Campaign {
             id,
@@ -77,6 +87,8 @@ impl CampaignContract {
             raised: 0,
             status: CampaignStatus::Active,
             deadline,
+            fee_bps,
+            platform_wallet,
         };
         env.storage().persistent().set(&DataKey::Campaign(id), &campaign);
         Self::bump_campaign_ttl(env.clone(), id);
@@ -191,6 +203,9 @@ impl CampaignContract {
             (Symbol::new(&env, "campaign_archived"),),
             (campaign_id,),
         );
+    pub fn get_fee_config(env: Env, campaign_id: u64) -> (u32, Option<Address>) {
+        let campaign = Self::get_campaign(env.clone(), campaign_id).unwrap();
+        (campaign.fee_bps, campaign.platform_wallet)
     }
 
     pub fn bump_campaign_ttl(env: Env, campaign_id: u64) {
@@ -214,6 +229,8 @@ impl CampaignContract {
 }
 
 #[cfg(test)]
+mod invariant_tests;
+#[cfg(test)]
 mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
@@ -228,12 +245,14 @@ mod test {
         let owner = Address::generate(&env);
 
         client.initialize(&admin);
-        let campaign_id = client.create_campaign(&owner, &1_000_i128, &2_000_u64);
+        let campaign_id = client.create_campaign(&owner, &1_000_i128, &2_000_u64, &500, &None);
         let campaign = client.get_campaign(&campaign_id).unwrap();
 
         assert_eq!(campaign.owner, owner);
         assert_eq!(campaign.goal, 1_000_i128);
         assert_eq!(campaign.status, CampaignStatus::Active);
+        assert_eq!(campaign.fee_bps, 500);
+        assert_eq!(campaign.platform_wallet, None);
         assert_eq!(client.get_campaign_count(), 1_u64);
 
         client.suspend_campaign(&admin, &campaign_id);

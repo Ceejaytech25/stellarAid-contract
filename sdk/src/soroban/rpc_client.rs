@@ -114,6 +114,12 @@ impl SorobanRpcClient {
         .await
     }
 
+    /// Health check: calls getHealth RPC. Returns success if the node responds.
+    pub async fn get_health(&self) -> Result<(), RpcError> {
+        let _: serde_json::Value = self.call("getHealth", serde_json::json!({})).await?;
+        Ok(())
+    }
+
     #[tracing::instrument(skip(self), fields(hash))]
     pub async fn get_transaction_status(&self, hash: &str) -> Result<TransactionStatus, RpcError> {
         let result: TxStatusResult = self
