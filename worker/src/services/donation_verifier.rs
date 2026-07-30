@@ -1,5 +1,6 @@
 use sdk::horizon::client::{HorizonClient, HorizonError};
 use crate::models::donation_status::{DonationEvent, DonationStatus};
+use tracing::{info, warn, error, Instrument, Span};
 
 #[derive(Debug)]
 pub struct VerificationResult {
@@ -13,7 +14,35 @@ pub async fn cross_check_transaction(
     tx_hash: &str,
     current_status: DonationStatus,
 ) -> Result<VerificationResult, HorizonError> {
-    let tx = horizon.get_transaction(tx_hash).await?;
+    let span = Span::current();
+    span.record("tx_hash", tx_hash);
+    span.record("current_status", %current_status);
+
+    info!(
+        tx_hash = tx_hash,
+        current_status = %current_status,
+        "starting donation verification"
+    );
+
+    let tx = match horizon.get_transaction(tx_hash).await {
+        Ok(tx) => {
+            info!(
+                tx_hash = tx_hash,
+                successful = tx.successful,
+                ledger = tx.ledger,
+                "horizon transaction fetched"
+            );
+            tx
+        }
+        Err(e) => {
+            error!(
+                tx_hash = tx_hash,
+                error = %e,
+                "failed to fetch transaction from horizon"
+            );
+            return Err(e);
+        }
+    };
 
     let event = if tx.successful {
         DonationEvent::Confirm
@@ -21,17 +50,37 @@ pub async fn cross_check_transaction(
         DonationEvent::Fail
     };
 
-    // Drive through Confirming if still Submitted
     let status = match current_status {
         DonationStatus::Submitted => {
-            DonationStatus::Confirming
+            let new = DonationStatus::Confirming
                 .transition(event)
-                .unwrap_or(DonationStatus::Failed)
+                .unwrap_or(DonationStatus::Failed);
+            info!(
+                tx_hash = tx_hash,
+                from = %DonationStatus::Submitted,
+                to = %new,
+                "donation status transition"
+            );
+            new
         }
         DonationStatus::Confirming => {
-            current_status.transition(event).unwrap_or(DonationStatus::Failed)
+            let new = current_status.transition(event).unwrap_or(DonationStatus::Failed);
+            info!(
+                tx_hash = tx_hash,
+                from = %current_status,
+                to = %new,
+                "donation status transition"
+            );
+            new
         }
-        other => other,
+        other => {
+            warn!(
+                tx_hash = tx_hash,
+                status = %other,
+                "unexpected donation status, no transition applied"
+            );
+            other
+        }
     };
 
     Ok(VerificationResult {
