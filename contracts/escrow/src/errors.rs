@@ -1,4 +1,4 @@
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, symbol_short, Symbol};
 
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -11,10 +11,41 @@ pub enum EscrowError {
     InvalidFeeBps = 6,
     DisputeAlreadyOpen = 7,
     NotExpired = 8,
-    /// #484 – a re-entrant call was detected and rejected.
     Reentrant = 9,
-    /// #485 – client and artist addresses must be distinct, or an address failed validation.
     InvalidAddress = 10,
-    /// Added for #481: client does not hold enough USDC to fund the escrow.
-    InsufficientBalance = 9,
+    InsufficientBalance = 11,
+}
+
+impl core::fmt::Display for EscrowError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            Self::AlreadyExists => write!(f, "escrow already exists"),
+            Self::NotFound => write!(f, "escrow not found"),
+            Self::InvalidStatus => write!(f, "invalid escrow status for operation"),
+            Self::Unauthorized => write!(f, "caller is not authorized"),
+            Self::InvalidAmount => write!(f, "amount must be greater than zero"),
+            Self::InvalidFeeBps => write!(f, "fee basis points out of allowed range"),
+            Self::DisputeAlreadyOpen => write!(f, "a dispute is already open for this escrow"),
+            Self::NotExpired => write!(f, "escrow has not expired yet"),
+            Self::Reentrant => write!(f, "re-entrant call detected and rejected"),
+            Self::InvalidAddress => write!(f, "client and artist addresses must be distinct"),
+            Self::InsufficientBalance => write!(f, "client does not hold enough USDC"),
+        }
+    }
+}
+
+pub fn get_suggestion(error: EscrowError) -> Symbol {
+    match error {
+        EscrowError::AlreadyExists => symbol_short!("DUP"),
+        EscrowError::NotFound => symbol_short!("NOT_FOUND"),
+        EscrowError::InvalidStatus => symbol_short!("BAD_STS"),
+        EscrowError::Unauthorized => symbol_short!("AUTH"),
+        EscrowError::InvalidAmount => symbol_short!("BAD_AMT"),
+        EscrowError::InvalidFeeBps => symbol_short!("BAD_BPS"),
+        EscrowError::DisputeAlreadyOpen => symbol_short!("DUP_DS"),
+        EscrowError::NotExpired => symbol_short!("NOT_EXP"),
+        EscrowError::Reentrant => symbol_short!("REENTRY"),
+        EscrowError::InvalidAddress => symbol_short!("BAD_ADR"),
+        EscrowError::InsufficientBalance => symbol_short!("NO_FUND"),
+    }
 }

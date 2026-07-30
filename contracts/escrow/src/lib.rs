@@ -198,3 +198,4 @@ mod tests;
 mod refund_tests;
 #[cfg(test)]
 mod dispute_tests;
+mod integration_tests;
