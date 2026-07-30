@@ -7,3 +7,4 @@ pub mod setup;
 pub mod soroban;
 pub mod transaction_builder;
 pub mod utils;
+pub mod wallet;
