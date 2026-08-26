@@ -10,6 +10,8 @@ pub enum CommissionStatus {
     Refunded = 2,
     Disputed = 3,
     Expired = 4,
+    /// Settled early under a commission cancellation (#605).
+    Cancelled = 5,
 }
 
 #[contracttype]

@@ -253,6 +253,72 @@ impl EscrowContract {
         storage::get_dispute_ttl_ledgers(&env)
     }
 
+    /// Settle a cancelled commission (#605).
+    ///
+    /// The split is computed off-contract by the commission agreement's
+    /// pro-rata settlement and passed in; the two amounts must account for the
+    /// escrowed total exactly, so no dust can be stranded. The platform fee is
+    /// charged only on the artist's share — the client's refund is not taxed.
+    ///
+    /// CEI: Checks → Effects (status update) → Interactions (transfers).
+    pub fn cancel_escrow(
+        env: Env,
+        commission_id: Bytes,
+        config_contract: Address,
+        artist_amount: i128,
+        client_refund: i128,
+    ) -> Result<(), EscrowError> {
+        // CHECKS
+        let mut r = get_escrow(&env, &commission_id);
+        if r.status != CommissionStatus::Locked && r.status != CommissionStatus::Disputed {
+            return Err(EscrowError::InvalidStatus);
+        }
+        if artist_amount < 0 || client_refund < 0 {
+            return Err(EscrowError::InvalidAmount);
+        }
+        let total = artist_amount
+            .checked_add(client_refund)
+            .ok_or(EscrowError::ArithmeticOverflow)?;
+        if total != r.amount {
+            return Err(EscrowError::InvalidSplit);
+        }
+
+        let admin: Address = env.invoke_contract(&config_contract, &symbol_short!("get_adm"), soroban_sdk::vec![&env]);
+        admin.require_auth();
+        let usdc: Address = env.invoke_contract(&config_contract, &symbol_short!("get_usdc"), soroban_sdk::vec![&env]);
+        let pw: Address = env.invoke_contract(&config_contract, &symbol_short!("get_pw"), soroban_sdk::vec![&env]);
+
+        let artist = r.artist.clone();
+        let client = r.client.clone();
+
+        storage::with_reentrancy_guard(&env, || {
+            let (fee, payout) = calculate_fee_split(artist_amount, r.fee_bps)?;
+
+            // EFFECTS
+            r.status = CommissionStatus::Cancelled;
+            save_escrow(&env, &r);
+
+            // INTERACTIONS
+            let tc = token::Client::new(&env, &usdc);
+            if payout > 0 {
+                tc.transfer(&env.current_contract_address(), &artist, &payout);
+            }
+            if fee > 0 {
+                tc.transfer(&env.current_contract_address(), &pw, &fee);
+            }
+            if client_refund > 0 {
+                tc.transfer(&env.current_contract_address(), &client, &client_refund);
+            }
+
+            // EVENT
+            env.events().publish(
+                (symbol_short!("escrow"), symbol_short!("cancelled")),
+                (commission_id.clone(), payout, fee, client_refund),
+            );
+            Ok(())
+        })
+    }
+
     pub fn get_escrow(env: Env, commission_id: Bytes) -> Result<EscrowRecord, EscrowError> {
         if !escrow_exists(&env, &commission_id) { return Err(EscrowError::NotFound); }
         Ok(storage::get_escrow(&env, &commission_id))
@@ -269,4 +335,7 @@ mod dispute_tests;
 mod fee_math_tests;
 #[cfg(test)]
 mod storage_edge_tests;
+#[cfg(test)]
+mod cancellation_tests;
+#[cfg(test)]
 mod integration_tests;

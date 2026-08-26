@@ -1,7 +1,7 @@
 use soroban_sdk::{contracttype, Address, Bytes, String};
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AgreementStatus {
     Pending = 0,
     Active = 1,
@@ -11,7 +11,7 @@ pub enum AgreementStatus {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MilestoneStatus {
     Pending = 0,
     Approved = 1,
@@ -46,4 +46,14 @@ pub enum DataKey {
     Agreement(Bytes),
     Milestone(Bytes, Bytes), // (commission_id, milestone_id)
     MilestonesForAgreement(Bytes),
+    // Cancellation (#605)
+    CancellationPolicy(Bytes),
+    Cancellation(Bytes),
+    CancellationHistory,
+    // Agency support (#609)
+    Agency(Address),
+    Roster(Address),
+    RosterEntry(Address, Address),
+    ArtistAgency(Address),
+    AgencyAnalytics(Address),
 }
