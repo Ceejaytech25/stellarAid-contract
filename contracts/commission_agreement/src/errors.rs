@@ -13,6 +13,10 @@ pub enum AgreementError {
     MilestoneBudgetExceeded = 7,
     NotAllMilestonesApproved = 8,
     ArithmeticOverflow = 9,
+    /// Input string exceeds the allowed maximum length (closes #591).
+    InputTooLong = 11,
+    /// Deadline exceeds the maximum permitted future ledger (closes #592).
+    DeadlineTooFar = 12,
 }
 
 impl core::fmt::Display for AgreementError {
@@ -27,6 +31,8 @@ impl core::fmt::Display for AgreementError {
             Self::MilestoneBudgetExceeded => write!(f, "milestone budget exceeded"),
             Self::NotAllMilestonesApproved => write!(f, "not all milestones approved"),
             Self::ArithmeticOverflow => write!(f, "arithmetic operation would overflow"),
+            Self::InputTooLong => write!(f, "input string exceeds maximum allowed length"),
+            Self::DeadlineTooFar => write!(f, "deadline exceeds the maximum permitted future date"),
         }
     }
 }
@@ -42,5 +48,7 @@ pub fn get_suggestion(error: AgreementError) -> Symbol {
         AgreementError::MilestoneBudgetExceeded => symbol_short!("OVER_BUD"),
         AgreementError::NotAllMilestonesApproved => symbol_short!("NOT_ALL"),
         AgreementError::ArithmeticOverflow => symbol_short!("OVERFL"),
+        AgreementError::InputTooLong => symbol_short!("TOO_LONG"),
+        AgreementError::DeadlineTooFar => symbol_short!("FAR_DDL"),
     }
 }
