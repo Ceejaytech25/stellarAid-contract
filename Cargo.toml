@@ -7,6 +7,10 @@ members = [
     "contracts/dispute_arbiter",
     "contracts/subscription",
     "contracts/competitions",
+    "contracts/verification",
+    "contracts/revenue_sharing",
+    "contracts/recruitment",
+    "contracts/creator_fund",
 ]
 resolver = "2"
 
