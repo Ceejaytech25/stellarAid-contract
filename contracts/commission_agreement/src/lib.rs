@@ -126,6 +126,23 @@ fn attribute_commission(env: &Env, artist: &Address, budget_usdc: i128) {
     save_analytics(env, &agency, &analytics);
 }
 
+// ── Input length limits (closes #591) ────────────────────────────────────────
+
+/// Maximum byte length for a title in a commission agreement.
+const MAX_TITLE_LEN: u32 = 128;
+/// Maximum byte length for a milestone title.
+const MAX_MILESTONE_TITLE_LEN: u32 = 128;
+/// Maximum byte length for a rejection reason.
+const MAX_REASON_LEN: u32 = 512;
+/// Maximum byte length for a commission / milestone identifier.
+const MAX_ID_LEN: u32 = 64;
+
+// ── Deadline upper bound (closes #592) ───────────────────────────────────────
+
+/// Maximum number of ledgers into the future a deadline may be set.
+/// At ~5 s per ledger: 12_614_400 ≈ 2 years.
+const MAX_DEADLINE_OFFSET_LEDGERS: u32 = 12_614_400;
+
 #[contract]
 pub struct CommissionAgreementContract;
 
@@ -134,10 +151,14 @@ impl CommissionAgreementContract {
     /// Create a new commission agreement.
     ///
     /// Closes #457, closes #458.
+    /// Closes #591 – validates title and ID lengths before persisting.
+    /// Closes #592 – validates deadline does not exceed MAX_DEADLINE_OFFSET_LEDGERS.
     ///
     /// # Errors
     /// - [`AgreementError::InvalidAmount`] if `budget_usdc <= 0`
     /// - [`AgreementError::DeadlineInPast`] if `deadline_ledger <= current sequence`
+    /// - [`AgreementError::DeadlineTooFar`] if `deadline_ledger > current + MAX_DEADLINE_OFFSET_LEDGERS`
+    /// - [`AgreementError::InputTooLong`] if `title` or `commission_id` exceeds limits
     /// - [`AgreementError::AlreadyExists`] if an agreement with the same `commission_id` exists
     pub fn create_agreement(
         env: Env,
@@ -150,11 +171,26 @@ impl CommissionAgreementContract {
     ) -> Result<(), AgreementError> {
         client.require_auth();
 
+        // ── Input length validation (closes #591) ──────────────────────────
+        if commission_id.len() > MAX_ID_LEN {
+            return Err(AgreementError::InputTooLong);
+        }
+        if title.len() > MAX_TITLE_LEN {
+            return Err(AgreementError::InputTooLong);
+        }
+
         if budget_usdc <= 0 {
             return Err(AgreementError::InvalidAmount);
         }
         if deadline_ledger <= env.ledger().sequence() {
             return Err(AgreementError::DeadlineInPast);
+        }
+        // ── Deadline upper bound (closes #592) ─────────────────────────────
+        let max_deadline = env.ledger().sequence()
+            .checked_add(MAX_DEADLINE_OFFSET_LEDGERS)
+            .ok_or(AgreementError::ArithmeticOverflow)?;
+        if deadline_ledger > max_deadline {
+            return Err(AgreementError::DeadlineTooFar);
         }
         if env.storage().persistent().has(&DataKey::Agreement(commission_id.clone())) {
             return Err(AgreementError::AlreadyExists);
@@ -208,7 +244,13 @@ impl CommissionAgreementContract {
     /// Reject a pending commission agreement (artist auth required).
     ///
     /// Sets status to `Cancelled` and emits `AgreementRejected`. Closes #459.
+    /// Closes #591 – validates reason length.
     pub fn reject_agreement(env: Env, commission_id: Bytes, reason: String) -> Result<(), AgreementError> {
+        // ── Input length validation (closes #591) ──────────────────────────
+        if reason.len() > MAX_REASON_LEN {
+            return Err(AgreementError::InputTooLong);
+        }
+
         let mut record: AgreementRecord = env.storage().persistent()
             .get(&DataKey::Agreement(commission_id.clone()))
             .ok_or(AgreementError::NotFound)?;
@@ -230,6 +272,7 @@ impl CommissionAgreementContract {
     ///
     /// Validates the cumulative milestone budget does not exceed `budget_usdc`.
     /// Emits `MilestoneProposed`. Closes #460.
+    /// Closes #591 – validates milestone title and ID lengths.
     pub fn propose_milestone(
         env: Env,
         commission_id: Bytes,
@@ -237,6 +280,14 @@ impl CommissionAgreementContract {
         title: String,
         amount_usdc: i128,
     ) -> Result<(), AgreementError> {
+        // ── Input length validation (closes #591) ──────────────────────────
+        if milestone_id.len() > MAX_ID_LEN {
+            return Err(AgreementError::InputTooLong);
+        }
+        if title.len() > MAX_MILESTONE_TITLE_LEN {
+            return Err(AgreementError::InputTooLong);
+        }
+
         let record: AgreementRecord = env.storage().persistent()
             .get(&DataKey::Agreement(commission_id.clone()))
             .ok_or(AgreementError::NotFound)?;
