@@ -12,6 +12,7 @@ pub enum DisputeError {
     AlreadyResolved = 6,
     AutoResolveNotDue = 7,
     InvalidShareBps = 8,
+    ArithmeticOverflow = 9,
 }
 
 impl core::fmt::Display for DisputeError {
@@ -25,6 +26,7 @@ impl core::fmt::Display for DisputeError {
             Self::AlreadyResolved => write!(f, "already resolved"),
             Self::AutoResolveNotDue => write!(f, "auto-resolve not yet due"),
             Self::InvalidShareBps => write!(f, "invalid share bps"),
+            Self::ArithmeticOverflow => write!(f, "arithmetic operation would overflow"),
         }
     }
 }
@@ -39,5 +41,6 @@ pub fn get_suggestion(error: DisputeError) -> Symbol {
         DisputeError::AlreadyResolved => symbol_short!("RESOLVED"),
         DisputeError::AutoResolveNotDue => symbol_short!("NOT_DUE"),
         DisputeError::InvalidShareBps => symbol_short!("BAD_BPS"),
+        DisputeError::ArithmeticOverflow => symbol_short!("OVERFL"),
     }
 }

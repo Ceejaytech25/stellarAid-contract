@@ -12,6 +12,7 @@ pub enum AgreementError {
     DeadlineInPast = 6,
     MilestoneBudgetExceeded = 7,
     NotAllMilestonesApproved = 8,
+    ArithmeticOverflow = 9,
 }
 
 impl core::fmt::Display for AgreementError {
@@ -25,6 +26,7 @@ impl core::fmt::Display for AgreementError {
             Self::DeadlineInPast => write!(f, "deadline in past"),
             Self::MilestoneBudgetExceeded => write!(f, "milestone budget exceeded"),
             Self::NotAllMilestonesApproved => write!(f, "not all milestones approved"),
+            Self::ArithmeticOverflow => write!(f, "arithmetic operation would overflow"),
         }
     }
 }
@@ -39,5 +41,6 @@ pub fn get_suggestion(error: AgreementError) -> Symbol {
         AgreementError::DeadlineInPast => symbol_short!("PAST_DDL"),
         AgreementError::MilestoneBudgetExceeded => symbol_short!("OVER_BUD"),
         AgreementError::NotAllMilestonesApproved => symbol_short!("NOT_ALL"),
+        AgreementError::ArithmeticOverflow => symbol_short!("OVERFL"),
     }
 }

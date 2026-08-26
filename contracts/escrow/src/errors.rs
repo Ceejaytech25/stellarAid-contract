@@ -14,6 +14,7 @@ pub enum EscrowError {
     Reentrant = 9,
     InvalidAddress = 10,
     InsufficientBalance = 11,
+    ArithmeticOverflow = 12,
 }
 
 impl core::fmt::Display for EscrowError {
@@ -30,6 +31,7 @@ impl core::fmt::Display for EscrowError {
             Self::Reentrant => write!(f, "re-entrant call detected and rejected"),
             Self::InvalidAddress => write!(f, "client and artist addresses must be distinct"),
             Self::InsufficientBalance => write!(f, "client does not hold enough USDC"),
+            Self::ArithmeticOverflow => write!(f, "arithmetic operation would overflow"),
         }
     }
 }
@@ -47,5 +49,6 @@ pub fn get_suggestion(error: EscrowError) -> Symbol {
         EscrowError::Reentrant => symbol_short!("REENTRY"),
         EscrowError::InvalidAddress => symbol_short!("BAD_ADR"),
         EscrowError::InsufficientBalance => symbol_short!("NO_FUND"),
+        EscrowError::ArithmeticOverflow => symbol_short!("OVERFL"),
     }
 }
