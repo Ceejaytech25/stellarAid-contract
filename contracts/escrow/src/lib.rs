@@ -7,6 +7,25 @@ pub mod storage;
 use errors::EscrowError;
 use storage::{CommissionStatus, EscrowRecord, escrow_exists, get_escrow, save_escrow};
 
+// ── Pause helpers (closes #594) ─────────────────────────────────────────────
+
+/// Storage key for the escrow contract pause flag.
+#[soroban_sdk::contracttype]
+enum PauseKey {
+    Paused,
+    Admin,
+}
+
+/// Require the escrow contract is not paused.
+fn require_not_paused(env: &Env) -> Result<(), EscrowError> {
+    let paused: bool = env.storage().instance().get(&PauseKey::Paused).unwrap_or(false);
+    if paused {
+        Err(EscrowError::ContractPaused)
+    } else {
+        Ok(())
+    }
+}
+
 /// Ledgers until an escrow record expires from persistent storage (~30 days at 6s/ledger).
 /// Closes #487 – ledger-based TTL for escrow records.
 /// Disputed escrows are extended with the configurable dispute-period TTL
@@ -47,7 +66,64 @@ pub struct EscrowContract;
 
 #[contractimpl]
 impl EscrowContract {
+    // ── Pause / Resume (closes #594) ────────────────────────────────────────
+
+    /// Initialise the escrow admin. Must be called once after deployment.
+    /// If `initialize` is never called, pause/unpause are unavailable.
+    pub fn initialize(env: Env, admin: Address) -> Result<(), EscrowError> {
+        admin.require_auth();
+        if env.storage().instance().has(&PauseKey::Admin) {
+            return Err(EscrowError::AlreadyExists);
+        }
+        env.storage().instance().set(&PauseKey::Admin, &admin);
+        env.storage().instance().set(&PauseKey::Paused, &false);
+        Ok(())
+    }
+
+    /// Pause the escrow contract — blocks `create_escrow` and `refund_client`.
+    /// Only callable by the escrow admin set during `initialize`.
+    /// Closes #594.
+    pub fn pause(env: Env, admin: Address) -> Result<(), EscrowError> {
+        admin.require_auth();
+        let stored: Address = env.storage().instance()
+            .get(&PauseKey::Admin)
+            .ok_or(EscrowError::Unauthorized)?;
+        if stored != admin {
+            return Err(EscrowError::Unauthorized);
+        }
+        env.storage().instance().set(&PauseKey::Paused, &true);
+        env.events().publish(
+            (symbol_short!("esc"), symbol_short!("paused")),
+            admin,
+        );
+        Ok(())
+    }
+
+    /// Resume normal operations after a pause. Only callable by the escrow admin.
+    /// Closes #594.
+    pub fn unpause(env: Env, admin: Address) -> Result<(), EscrowError> {
+        admin.require_auth();
+        let stored: Address = env.storage().instance()
+            .get(&PauseKey::Admin)
+            .ok_or(EscrowError::Unauthorized)?;
+        if stored != admin {
+            return Err(EscrowError::Unauthorized);
+        }
+        env.storage().instance().set(&PauseKey::Paused, &false);
+        env.events().publish(
+            (symbol_short!("esc"), symbol_short!("unpaused")),
+            admin,
+        );
+        Ok(())
+    }
+
+    /// Returns `true` when the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage().instance().get(&PauseKey::Paused).unwrap_or(false)
+    }
+
     /// Closes #482 (CEI), #486 (events), #487 (TTL), #587 (reentrancy guard).
+    /// Closes #594 (pause guard on create_escrow).
     /// CEI: Checks → Effects (save record) → Interactions (token transfer).
     pub fn create_escrow(
         env: Env,
@@ -60,6 +136,7 @@ impl EscrowContract {
         client.require_auth();
 
         // CHECKS
+        require_not_paused(&env)?;
         if amount <= 0 { return Err(EscrowError::InvalidAmount); }
         if escrow_exists(&env, &commission_id) { return Err(EscrowError::AlreadyExists); }
 
@@ -139,6 +216,7 @@ impl EscrowContract {
     }
 
     /// Closes #482 (CEI), #486 (events), #587 (reentrancy guard).
+    /// Closes #594 (pause guard on refund_client).
     /// CEI: Checks → Effects (status update) → Interactions (transfer).
     pub fn refund_client(
         env: Env,
@@ -146,6 +224,7 @@ impl EscrowContract {
         config_contract: Address,
     ) -> Result<(), EscrowError> {
         // CHECKS
+        require_not_paused(&env)?;
         let mut r = get_escrow(&env, &commission_id);
         if r.status != CommissionStatus::Locked && r.status != CommissionStatus::Disputed {
             return Err(EscrowError::InvalidStatus);

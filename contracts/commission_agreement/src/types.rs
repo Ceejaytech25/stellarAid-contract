@@ -46,6 +46,9 @@ pub enum DataKey {
     Agreement(Bytes),
     Milestone(Bytes, Bytes), // (commission_id, milestone_id)
     MilestonesForAgreement(Bytes),
+    /// Serialization lock for milestone state transitions (closes #589).
+    /// Key: (commission_id, milestone_id) — value: `true` when locked.
+    MilestoneLock(Bytes, Bytes),
     // Cancellation (#605)
     CancellationPolicy(Bytes),
     Cancellation(Bytes),

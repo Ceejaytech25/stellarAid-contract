@@ -13,6 +13,9 @@ pub enum AgreementError {
     MilestoneBudgetExceeded = 7,
     NotAllMilestonesApproved = 8,
     ArithmeticOverflow = 9,
+    /// Milestone state transition is locked — a concurrent update is in
+    /// progress; retry the operation. Closes #589.
+    MilestoneLocked = 10,
     NotCancellable = 10,
     AlreadyCancelled = 11,
     InvalidPolicy = 12,
@@ -36,6 +39,7 @@ impl core::fmt::Display for AgreementError {
             Self::MilestoneBudgetExceeded => write!(f, "milestone budget exceeded"),
             Self::NotAllMilestonesApproved => write!(f, "not all milestones approved"),
             Self::ArithmeticOverflow => write!(f, "arithmetic operation would overflow"),
+            Self::MilestoneLocked => write!(f, "milestone is locked for concurrent update; retry"),
             Self::NotCancellable => write!(f, "agreement cannot be cancelled in this state"),
             Self::AlreadyCancelled => write!(f, "agreement is already cancelled"),
             Self::InvalidPolicy => write!(f, "invalid cancellation policy"),
@@ -60,6 +64,7 @@ pub fn get_suggestion(error: AgreementError) -> Symbol {
         AgreementError::MilestoneBudgetExceeded => symbol_short!("OVER_BUD"),
         AgreementError::NotAllMilestonesApproved => symbol_short!("NOT_ALL"),
         AgreementError::ArithmeticOverflow => symbol_short!("OVERFL"),
+        AgreementError::MilestoneLocked => symbol_short!("MS_LOCK"),
         AgreementError::NotCancellable => symbol_short!("NO_CANCEL"),
         AgreementError::AlreadyCancelled => symbol_short!("CANCELLED"),
         AgreementError::InvalidPolicy => symbol_short!("BAD_POL"),

@@ -290,17 +290,49 @@ impl CommissionAgreementContract {
             return Err(AgreementError::InvalidStatus);
         }
 
+        // ── Serialization lock for milestone state transitions (closes #589) ─
+        // Acquire the lock before reading the milestone status.  Any concurrent
+        // call (e.g. a simultaneous approve + reject) will find the lock set and
+        // return `MilestoneLocked`, preventing inconsistent state.
+        let lock_key = DataKey::MilestoneLock(commission_id.clone(), milestone_id.clone());
+        if env.storage().persistent().has(&lock_key) {
+            return Err(AgreementError::MilestoneLocked);
+        }
+        env.storage().persistent().set(&lock_key, &true);
+
         let mut milestone: MilestoneRecord = env.storage().persistent()
             .get(&DataKey::Milestone(commission_id.clone(), milestone_id.clone()))
             .ok_or(AgreementError::NotFound)?;
 
         if milestone.status != MilestoneStatus::Pending {
+            // Release lock before returning
+            env.storage().persistent().remove(&lock_key);
             return Err(AgreementError::InvalidStatus);
         }
 
+        // EFFECTS: update milestone status
         milestone.status = MilestoneStatus::Approved;
         env.storage().persistent().set(&DataKey::Milestone(commission_id.clone(), milestone_id.clone()), &milestone);
 
+        // Update the milestone list in-place so the all_approved check is accurate (closes #589).
+        let milestones: Vec<MilestoneRecord> = env.storage().persistent()
+            .get(&DataKey::MilestonesForAgreement(commission_id.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        let mut updated_milestones = Vec::new(&env);
+        for m in milestones.iter() {
+            if m.milestone_id == milestone_id {
+                updated_milestones.push_back(milestone.clone());
+            } else {
+                updated_milestones.push_back(m);
+            }
+        }
+        env.storage().persistent().set(&DataKey::MilestonesForAgreement(commission_id.clone()), &updated_milestones);
+
+        // Check whether all milestones are now approved using the updated list.
+        let all_approved = !updated_milestones.is_empty()
+            && updated_milestones.iter().all(|m| m.status == MilestoneStatus::Approved);
+        if all_approved {
         // Mirror the approval into the per-agreement list. Without this the
         // list keeps the stale `Pending` copy, which both the completion check
         // below and the pro-rata cancellation settlement (#605) read from.
@@ -323,7 +355,10 @@ impl CommissionAgreementContract {
             env.storage().persistent().set(&DataKey::Agreement(commission_id.clone()), &record);
         }
 
-        env.events().publish((symbol_short!("ms_ok"),), (commission_id, milestone_id));
+        // Release the serialization lock
+        env.storage().persistent().remove(&lock_key);
+
+        env.events().publish((symbol_short!("ms_approved"),), (commission_id, milestone_id));
         Ok(())
     }
 
