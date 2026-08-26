@@ -1,5 +1,7 @@
 use soroban_sdk::{contracttype, Address, Bytes, Env};
 
+use crate::errors::EscrowError;
+
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommissionStatus {
@@ -25,8 +27,10 @@ pub struct EscrowRecord {
 #[contracttype]
 pub enum DataKey {
     Escrow(Bytes),
-    /// Re-entrancy guard flag (#484).
+    /// Re-entrancy guard flag (#484, #587).
     ReentrancyLock,
+    /// Configurable dispute-period TTL extension in ledgers (#586).
+    DisputeTtlLedgers,
 }
 
 pub fn escrow_exists(env: &Env, id: &Bytes) -> bool {
@@ -54,4 +58,42 @@ pub fn set_locked(env: &Env) {
 /// Release the re-entrancy lock.
 pub fn clear_locked(env: &Env) {
     env.storage().instance().remove(&DataKey::ReentrancyLock);
+}
+
+/// Runs `f` under the re-entrancy guard (#587).
+///
+/// Rejects any call that arrives while a guarded entry point is still
+/// executing, and always releases the lock once `f` returns — including on
+/// the error path. If `f` panics or aborts, the transaction reverts and the
+/// instance storage (and therefore the lock) is discarded with it.
+pub fn with_reentrancy_guard<F, T>(env: &Env, f: F) -> Result<T, EscrowError>
+where
+    F: FnOnce() -> Result<T, EscrowError>,
+{
+    if is_locked(env) {
+        return Err(EscrowError::Reentrant);
+    }
+    set_locked(env);
+    let result = f();
+    clear_locked(env);
+    result
+}
+
+// ── Dispute-period TTL configuration (#586) ────────────────────────────────
+
+/// Default dispute-period TTL: ~60 days at 6s/ledger. Roughly twice the base
+/// escrow TTL so an active dispute never races record expiration.
+pub const DEFAULT_DISPUTE_TTL_LEDGERS: u32 = 864_000;
+
+/// Returns the configured dispute-period TTL, falling back to the default.
+pub fn get_dispute_ttl_ledgers(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&DataKey::DisputeTtlLedgers)
+        .unwrap_or(DEFAULT_DISPUTE_TTL_LEDGERS)
+}
+
+/// Persists the dispute-period TTL.
+pub fn set_dispute_ttl_ledgers(env: &Env, ledgers: u32) {
+    env.storage().instance().set(&DataKey::DisputeTtlLedgers, &ledgers);
 }
