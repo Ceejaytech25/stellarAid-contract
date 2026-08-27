@@ -10,6 +10,8 @@ mod test;
 use errors::SubscriptionError;
 use types::{DataKey, PaymentKind, PaymentRecord, Subscription, SubscriptionStatus, Tier};
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct SubscriptionContract;
 
@@ -143,6 +145,8 @@ impl SubscriptionContract {
             .publish((symbol_short!("init"),), (admin, token, grace_ledgers));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     // ── Tiers and benefits ─────────────────────────────────────────────────
 

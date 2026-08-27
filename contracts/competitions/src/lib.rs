@@ -13,6 +13,8 @@ use types::{
     Winner, MAX_PRIZE_POSITIONS, TOTAL_BPS,
 };
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct Competitions;
 
@@ -147,6 +149,8 @@ impl Competitions {
             .publish((symbol_short!("init"),), (admin, history_limit));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     /// Publish an account's reputation score, which is the weight its vote
     /// carries. Admin-only: reputation is computed off-chain and attested here.

@@ -1,5 +1,5 @@
-use soroban_sdk::{testutils::Address as _, Address, Env};
 use crate::PlatformConfigContractClient;
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn setup(env: &Env) -> (crate::PlatformConfigContractClient<'_>, Address, Address, Address) {
     env.mock_all_auths();

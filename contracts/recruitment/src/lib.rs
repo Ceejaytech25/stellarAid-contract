@@ -10,6 +10,8 @@ mod test;
 use errors::RecruitmentError;
 use types::{Application, DataKey, Job, JobStatus, Offer, Performance, Pipeline, Stage};
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct Recruitment;
 
@@ -135,6 +137,8 @@ impl Recruitment {
             .publish((symbol_short!("init"),), (admin, max_applicants));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     pub fn post_job(
         env: Env,

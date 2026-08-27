@@ -10,6 +10,8 @@ mod test;
 use errors::VerificationError;
 use types::{DataKey, Portfolio, PortfolioStatus, QualityScore, ReviewOutcome, VerificationRecord};
 
+include!("../../semver_types.rs");
+
 /// Weights applied to each quality criterion; they sum to 100 so the blended
 /// score stays on the same 0..=100 scale as the individual marks.
 const WEIGHT_ORIGINALITY: u32 = 30;
@@ -149,6 +151,8 @@ impl Verification {
         );
         Ok(())
     }
+
+    impl_semver_queries!();
 
     pub fn add_reviewer(env: Env, reviewer: Address) -> Result<(), VerificationError> {
         require_admin(&env)?;

@@ -42,6 +42,8 @@ use cancellation::{CancellationPolicy, CancellationQuote, CancellationReason, Ca
 use errors::AgreementError;
 use types::{AgreementRecord, AgreementStatus, DataKey, MilestoneRecord, MilestoneStatus};
 
+include!("../../semver_types.rs");
+
 /// Cap on the retained cancellation history, so the list stays bounded.
 const CANCELLATION_HISTORY_LIMIT: u32 = 50;
 
@@ -148,6 +150,8 @@ pub struct CommissionAgreementContract;
 
 #[contractimpl]
 impl CommissionAgreementContract {
+    impl_semver_queries!();
+
     /// Create a new commission agreement.
     ///
     /// Closes #457, closes #458.

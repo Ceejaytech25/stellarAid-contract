@@ -58,7 +58,10 @@ impl WithdrawalContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         env.storage().instance().set(&DataKey::DonationContract, &donation_contract);
+        shared::version::seed(&env, env!("CARGO_PKG_VERSION"));
     }
+
+    shared::impl_semver_queries!();
 
     /// Pause the contract, blocking all state-changing operations.
     pub fn pause(env: Env, admin: Address) {
