@@ -9,6 +9,8 @@ use errors::ConfigError;
 use storage::*;
 use types::{FeeTokenMetadata, PlatformConfig};
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct PlatformConfigContract;
 
@@ -31,9 +33,12 @@ impl PlatformConfigContract {
         set_fee_bps_val(&env, fee_bps);
         set_platform_wallet(&env, &platform_wallet);
         set_usdc_token(&env, &usdc_token);
-        env.events().publish((symbol_short!("init"),), (admin.clone(), fee_bps));
+        env.events()
+            .publish((symbol_short!("init"),), (admin.clone(), fee_bps));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     pub fn get_config(env: Env) -> PlatformConfig {
         PlatformConfig {
@@ -52,7 +57,8 @@ impl PlatformConfigContract {
         }
         let old_fee = get_fee_bps(&env);
         set_fee_bps_val(&env, fee_bps);
-        env.events().publish((symbol_short!("feeupdtd"),), (old_fee, fee_bps));
+        env.events()
+            .publish((symbol_short!("feeupdtd"),), (old_fee, fee_bps));
         Ok(())
     }
 
@@ -67,7 +73,8 @@ impl PlatformConfigContract {
         let admin = get_admin(&env);
         admin.require_auth();
         set_pending_admin(&env, &new_admin);
-        env.events().publish((symbol_short!("admprosd"),), new_admin);
+        env.events()
+            .publish((symbol_short!("admprosd"),), new_admin);
         Ok(())
     }
 
@@ -92,7 +99,13 @@ impl PlatformConfigContract {
         if max_fee_bps > 1000 {
             return Err(ConfigError::InvalidFeeBps);
         }
-        let meta = FeeTokenMetadata { name, symbol, decimal, min_fee_bps, max_fee_bps };
+        let meta = FeeTokenMetadata {
+            name,
+            symbol,
+            decimal,
+            min_fee_bps,
+            max_fee_bps,
+        };
         set_fee_token_metadata(&env, &meta);
         env.events().publish((symbol_short!("tkmeta"),), ());
         Ok(())

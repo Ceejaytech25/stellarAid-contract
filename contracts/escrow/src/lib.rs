@@ -7,6 +7,8 @@ pub mod storage;
 use errors::EscrowError;
 use storage::{CommissionStatus, EscrowRecord, escrow_exists, get_escrow, save_escrow};
 
+include!("../../semver_types.rs");
+
 // ── Pause helpers (closes #594) ─────────────────────────────────────────────
 
 /// Storage key for the escrow contract pause flag.
@@ -79,6 +81,8 @@ impl EscrowContract {
         env.storage().instance().set(&PauseKey::Paused, &false);
         Ok(())
     }
+
+    impl_semver_queries!();
 
     /// Pause the escrow contract — blocks `create_escrow` and `refund_client`.
     /// Only callable by the escrow admin set during `initialize`.

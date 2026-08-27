@@ -1,7 +1,14 @@
-use soroban_sdk::{testutils::Address as _, Address, Env};
 use crate::PlatformConfigContractClient;
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
-fn setup(env: &Env) -> (crate::PlatformConfigContractClient, Address, Address, Address) {
+fn setup(
+    env: &Env,
+) -> (
+    crate::PlatformConfigContractClient,
+    Address,
+    Address,
+    Address,
+) {
     env.mock_all_auths();
     let contract_id = env.register_contract(None, crate::PlatformConfigContract);
     let client = PlatformConfigContractClient::new(env, &contract_id);
@@ -18,6 +25,8 @@ fn test_set_fee_bps_success() {
     let (client, _, _, _) = setup(&env);
     client.set_fee_bps(&200);
     assert_eq!(client.get_config().fee_bps, 200);
+}
+
 #[test]
 fn test_initialize_success() {
     let env = Env::default();
@@ -61,6 +70,10 @@ fn test_accept_admin_updates_admin() {
     client.accept_admin();
     let config = client.get_config();
     assert_eq!(config.admin, new_admin);
+}
+
+#[test]
+#[should_panic]
 fn test_initialize_already_initialized() {
     let env = Env::default();
     env.mock_all_auths();

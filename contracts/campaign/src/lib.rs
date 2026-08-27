@@ -55,7 +55,10 @@ impl CampaignContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Initialized, &true);
         env.storage().instance().set(&DataKey::CampaignCount, &0_u64);
+        shared::version::seed(&env, env!("CARGO_PKG_VERSION"));
     }
+
+    shared::impl_semver_queries!();
 
     /// Pause the contract, blocking all state-changing operations.
     pub fn pause(env: Env, admin: Address) {
@@ -310,5 +313,25 @@ mod test {
         client.unpause(&admin);
         let campaign_id = client.create_campaign(&owner, &1_000_i128, &2_000_u64, &500, &None);
         assert_eq!(campaign_id, 1);
+    }
+
+    #[test]
+    fn get_version_matches_cargo_semver() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, CampaignContract);
+        let client = CampaignContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin);
+        let v = client.get_version();
+        assert_eq!(v.major, 0);
+        assert_eq!(v.minor, 1);
+        assert_eq!(v.patch, 0);
+        assert!(client.is_version_compatible(&0, &1, &0));
+        assert!(!client.is_version_compatible(&0, &2, &0));
+        let meta = client.get_version_metadata();
+        assert_eq!(meta.storage_schema, 1);
+        assert_eq!(meta.min_compatible.minor, 1);
     }
 }

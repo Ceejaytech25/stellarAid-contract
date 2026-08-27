@@ -7,6 +7,8 @@ pub mod types;
 use errors::DisputeError;
 use types::{DataKey, DisputeRecord, DisputeStatus};
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct DisputeArbiter;
 
@@ -107,6 +109,8 @@ impl DisputeArbiter {
             .publish((symbol_short!("init"),), (admin, escrow_contract, config_contract, auto_resolve_ledgers));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     pub fn open_dispute(
         env: Env,

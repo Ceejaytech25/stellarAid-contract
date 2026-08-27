@@ -1,7 +1,8 @@
 #![no_std]
-pub mod types;
-pub mod pause;
-pub mod validation;
-pub mod upgrade;
-pub mod errors;
 pub mod config;
+pub mod errors;
+pub mod pause;
+pub mod types;
+pub mod upgrade;
+pub mod validation;
+pub mod version;
