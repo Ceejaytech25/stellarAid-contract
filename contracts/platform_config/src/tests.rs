@@ -114,3 +114,17 @@ fn test_get_config_returns_correct_values() {
     assert_eq!(config.platform_wallet, wallet);
     assert_eq!(config.usdc_token, token);
 }
+
+#[test]
+fn test_get_version_after_initialize() {
+    let env = Env::default();
+    let (client, _, _, _) = setup(&env);
+    let v = client.get_version();
+    assert_eq!(v.major, 0);
+    assert_eq!(v.minor, 1);
+    assert_eq!(v.patch, 0);
+    assert!(client.is_version_compatible(&0, &1, &0));
+    assert!(!client.is_version_compatible(&0, &2, &0));
+    let meta = client.get_version_metadata();
+    assert_eq!(meta.storage_schema, 1);
+}
