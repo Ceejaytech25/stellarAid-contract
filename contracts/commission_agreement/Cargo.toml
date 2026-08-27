@@ -2,6 +2,12 @@
 name = "commission_agreement"
 version.workspace = true
 edition.workspace = true
+
+[package.metadata.stellar-aid]
+versioning = "semver"
+storage-schema = 1
+min-compatible = "0.1.0"
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 [dependencies]

@@ -43,7 +43,10 @@ impl DonationContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::CampaignContract, &campaign_contract);
         env.storage().instance().set(&DataKey::Initialized, &true);
+        shared::version::seed(&env, env!("CARGO_PKG_VERSION"));
     }
+
+    shared::impl_semver_queries!();
 
     pub fn pause(env: Env, admin: Address) {
         admin.require_auth();

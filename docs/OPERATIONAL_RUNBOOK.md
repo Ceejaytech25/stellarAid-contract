@@ -72,6 +72,13 @@ Key metrics to monitor:
 
 ## Incident Response
 
+### Maintenance windows
+
+Planned pauses and upgrades run inside the windows defined in
+[docs/MAINTENANCE_WINDOWS.md](../docs/MAINTENANCE_WINDOWS.md) (Tuesday /
+Thursday 02:00–04:00 UTC, plus emergency). Follow that document for pause
+order, state backup, upgrade timeline, and communication templates.
+
 ### Pause contracts
 
 If a vulnerability is discovered, pause all contracts:

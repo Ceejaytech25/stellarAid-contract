@@ -13,6 +13,8 @@ use types::{
     TOTAL_BPS,
 };
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct CreatorFund;
 
@@ -133,6 +135,8 @@ impl CreatorFund {
             .publish((symbol_short!("init"),), (admin, history_limit));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     /// Open a new pool. The steward owns the fund's configuration; spending
     /// still goes through contributor voting.

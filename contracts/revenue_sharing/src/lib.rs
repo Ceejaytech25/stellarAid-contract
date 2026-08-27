@@ -13,6 +13,8 @@ use types::{
     MAX_PARTICIPANTS, TOTAL_BPS,
 };
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct RevenueSharing;
 
@@ -119,6 +121,8 @@ impl RevenueSharing {
             .publish((symbol_short!("init"),), (admin, history_limit));
         Ok(())
     }
+
+    impl_semver_queries!();
 
     pub fn create_agreement(
         env: Env,

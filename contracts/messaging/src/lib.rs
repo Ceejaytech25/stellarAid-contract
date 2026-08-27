@@ -25,6 +25,8 @@ use types::{
     MAX_MESSAGE_LEN, MAX_HISTORY, RATE_LIMIT_LEDGERS,
 };
 
+include!("../../semver_types.rs");
+
 #[contract]
 pub struct MessagingContract;
 
@@ -43,6 +45,8 @@ impl MessagingContract {
         env.storage().instance().set(&DataKey::Initialized, &true);
         Ok(())
     }
+
+    impl_semver_queries!();
 
     // ── Conversation management ───────────────────────────────────────────────
 
@@ -526,5 +530,28 @@ mod test {
         env.ledger().with_mut(|l| l.sequence_number = RATE_LIMIT_LEDGERS + 1);
         let result = client.try_send_message(&conv_id, &charlie, &String::from_str(&env, "hack"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_version_after_initialize() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register_contract(None, MessagingContract);
+        let client = MessagingContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        let v = client.get_version();
+        assert_eq!(v.major, 0);
+        assert_eq!(v.minor, 1);
+        assert_eq!(v.patch, 0);
+        assert!(client.is_version_compatible(&0, &1, &0));
+        assert!(!client.is_version_compatible(&1, &0, &0));
+        let meta = client.get_version_metadata();
+        assert_eq!(meta.storage_schema, 1);
+        assert_eq!(meta.min_compatible.major, 0);
+        assert_eq!(meta.min_compatible.minor, 1);
+        assert_eq!(meta.min_compatible.patch, 0);
     }
 }
